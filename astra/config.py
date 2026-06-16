@@ -71,20 +71,35 @@ ESI_WEIGHTS = {
     "junction": 0.10,
 }
 
+# Canonical cause normalization. Raw data has case variants and extra labels
+# ('Debris'/'debris', 'Fog / Low Visibility', 'others', 'test_demo') — map every
+# raw value onto a canonical key so no cause silently falls through to a default.
+CAUSE_NORMALIZE = {
+    "debris": "debris",
+    "fog / low visibility": "fog_low_visibility",
+    "fog/low visibility": "fog_low_visibility",
+    "others": "others",
+    "test_demo": "test_demo",
+}
+
 # S_cause — severity by event cause (disruption intensity, not just duration)
 CAUSE_SCORE = {
     "vehicle_breakdown": 15,
     "accident": 25,
     "congestion": 35,
     "procession": 40,
+    "fog_low_visibility": 45,   # reduces capacity broadly, rarely full blockage
     "vip_movement": 50,
     "public_event": 50,
+    "debris": 50,               # obstruction; needs clearing crew
     "protest": 55,
     "tree_fall": 55,
     "pot_holes": 60,
     "road_conditions": 65,
     "construction": 70,
     "water_logging": 85,
+    "others": 40,               # unknown — neutral midpoint
+    "test_demo": 5,             # test entries — negligible
 }
 CAUSE_SCORE_DEFAULT = 40
 
@@ -144,10 +159,14 @@ IMPACT_CLOSURE_MULT = 1.8       # full closure forces 100% rerouting
 IMPACT_PEAK_MULT = 1.6          # same blockage displaces far more vehicles
 IMPACT_CAUSE_MULT = {
     "vehicle_breakdown": 1.0,
+    "test_demo": 1.0,
+    "others": 1.0,
     "congestion": 1.2,
     "accident": 1.2,
+    "fog_low_visibility": 1.2,
     "pot_holes": 1.3,
     "tree_fall": 1.3,
+    "debris": 1.3,
     "construction": 1.4,
     "procession": 1.4,
     "water_logging": 1.5,
@@ -225,10 +244,14 @@ SITE_OFFICERS = {
     "vehicle_breakdown": 1,
     "pot_holes": 1,
     "road_conditions": 1,
+    "test_demo": 1,
+    "others": 1,
+    "fog_low_visibility": 1,
     "tree_fall": 2,
     "construction": 2,
     "water_logging": 2,
     "congestion": 2,
+    "debris": 2,
     "accident": 3,
     "procession": 4,
     "public_event": 5,
