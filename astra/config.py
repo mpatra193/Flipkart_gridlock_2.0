@@ -216,7 +216,7 @@ SIMILARITY_LOCATION_NORM_KM = 10.0   # events >= 10 km apart → max location di
 SIMILARITY_HOUR_NORM = 12.0          # max circular hour distance
 SIMILARITY_WEEKDAY_NORM = 3.5        # max circular weekday distance
 SIMILAR_K = 15                        # neighbours to retrieve
-SIMILARITY_THRESHOLD = 0.30          # exclude matches with distance above this
+SIMILARITY_THRESHOLD = 0.40          # exclude matches with distance above this
 
 # Confidence factor weights
 CONFIDENCE_WEIGHTS = {"match_count": 0.4, "consistency": 0.4, "alignment": 0.2}
