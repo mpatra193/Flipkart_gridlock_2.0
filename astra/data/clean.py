@@ -45,7 +45,8 @@ def normalize_priority(df: pd.DataFrame) -> pd.DataFrame:
     """Map High/Low priority to a binary `priority_high` (default High when null)."""
     df = df.copy()
     p = df["priority"].astype("string").str.strip().str.lower()
-    df["priority_high"] = (p == "high").astype("int8")
+    # Null priority (2 rows) → treat as High: conservative for severity scoring.
+    df["priority_high"] = (p == "high").fillna(True).astype("int8")
     return df
 
 
