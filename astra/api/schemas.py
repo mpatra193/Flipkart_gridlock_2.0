@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class EventInput(BaseModel):
+    event_cause: str
+    junction: str | None = None
+    corridor: str | None = None
+    zone: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    hour: int = Field(ge=0, le=23)
+    weekday: int = Field(ge=0, le=6)
+    road_closure: bool = False
+    priority_high: bool = True
+    duration_override: float | None = Field(default=None, ge=0, le=168)
+
+    @model_validator(mode="after")
+    def _need_location(self):
+        if not self.junction and (self.latitude is None or self.longitude is None):
+            raise ValueError("provide either junction or latitude+longitude")
+        return self
