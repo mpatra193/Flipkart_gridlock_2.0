@@ -227,9 +227,10 @@ CONFIDENCE_WEIGHTS = {"match_count": 0.4, "consistency": 0.4, "alignment": 0.2}
 DIVERSION_CORRIDOR_WEIGHTS = {"load": 0.4, "reliability": 0.3, "capacity": 0.3}
 DIVERSION_CANDIDATE_RADIUS_MULT = 2.0   # candidate must be within 2× impact radius
 DIVERSION_CONFIDENCE_WEIGHTS = {
-    "corridor_score": 0.35,
-    "historical_success": 0.35,
+    "corridor_score": 0.30,
+    "historical_success": 0.25,
     "spillover_safety": 0.20,
+    "proximity": 0.15,
     "similarity_count": 0.10,
 }
 
