@@ -1,0 +1,19 @@
+services:
+  backend:
+    build: .
+    container_name: astra-backend
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: astra-frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
