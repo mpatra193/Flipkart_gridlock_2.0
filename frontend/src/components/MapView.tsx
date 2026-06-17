@@ -59,6 +59,16 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   }, []);
 
   useEffect(() => {
+    const handleResize = () => {
+      if (mapRef.current && typeof mapRef.current.resize === "function") {
+        mapRef.current.resize();
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
     if (configured !== true) return;
     let cancelled = false;
 
@@ -66,15 +76,26 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
       .then(() => waitFor(() => !!(window.mappls && window.mappls.Map) && !!containerRef.current))
       .then(() => {
         if (cancelled || mapRef.current || !containerRef.current) return;
-        const map = new window.mappls.Map(containerRef.current, {
-          center: [12.95, 77.6],
+        const map = new window.mappls.Map("mappls-map-container", {
+          center: { lat: 12.95, lng: 77.6 },
           zoom: 11,
           zoomControl: true,
         });
         mapRef.current = map;
-        if (typeof map.on === "function") map.on("load", () => !cancelled && setReady(true));
-        else setReady(true);
-        setTimeout(() => !cancelled && setReady(true), 1500);
+        
+        const triggerReady = () => {
+          if (!cancelled) {
+            setReady(true);
+            setTimeout(() => {
+              if (map && typeof map.resize === "function") map.resize();
+            }, 100);
+          }
+        };
+
+        if (typeof map.on === "function") map.on("load", triggerReady);
+        else triggerReady();
+        
+        setTimeout(triggerReady, 1500);
       })
       .catch((e) => {
         console.error("[Mappls]", e);
@@ -89,6 +110,11 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   useEffect(() => {
     if (!ready || !mapRef.current || !window.mappls || !prediction) return;
     const map = mapRef.current;
+    
+    if (typeof map.resize === "function") {
+      map.resize();
+    }
+
     overlaysRef.current.forEach((o) => {
       try {
         o.remove ? o.remove() : map.removeLayer?.(o);
@@ -125,8 +151,12 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
           })
         );
       });
-      map.setCenter?.([latitude, longitude]);
+      map.setCenter?.({ lat: latitude, lng: longitude });
       map.setZoom?.(13);
+      
+      setTimeout(() => {
+        if (map && typeof map.resize === "function") map.resize();
+      }, 200);
     } catch (e) {
       console.error("[Mappls overlay]", e);
     }
@@ -135,7 +165,12 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   if (configured === true) {
     return (
       <div className="glass h-full relative overflow-hidden" style={{ minHeight: 420 }}>
-        <div ref={containerRef} className="absolute inset-0" />
+        <div 
+          id="mappls-map-container" 
+          ref={containerRef} 
+          className="absolute inset-0" 
+          style={{ width: "100%", height: "100%" }} 
+        />
         <Badge text={ready ? "Mappls live" : "loading map…"} />
       </div>
     );
