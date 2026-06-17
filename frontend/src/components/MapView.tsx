@@ -14,8 +14,40 @@ const RISK_FILL: Record<string, string> = {
   LOW: "#eab308",
 };
 
+function loadSdk(): Promise<void> {
+  if (window.mappls && window.mappls.Map) return Promise.resolve();
+  if (document.getElementById("mappls-sdk")) {
+    return waitFor(() => !!(window.mappls && window.mappls.Map));
+  }
+  return mapplsToken().then(
+    (token) =>
+      new Promise<void>((resolve, reject) => {
+        const s = document.createElement("script");
+        s.id = "mappls-sdk";
+        s.src = `https://apis.mappls.com/advancedmaps/api/${token}/map_sdk?layer=vector&v=3.0`;
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error("Mappls SDK failed to load"));
+        document.head.appendChild(s);
+      })
+  );
+}
+
+function waitFor(cond: () => boolean, tries = 60): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let n = 0;
+    const tick = () => {
+      if (cond()) return resolve();
+      if (n++ > tries) return reject(new Error("Mappls SDK not ready"));
+      setTimeout(tick, 100);
+    };
+    tick();
+  });
+}
+
 export default function MapView({ prediction }: { prediction: Prediction | null }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [ready, setReady] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const overlaysRef = useRef<any[]>([]);
@@ -27,38 +59,35 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   }, []);
 
   useEffect(() => {
-    if (configured !== true || window.mappls || mapRef.current) return;
+    if (configured !== true) return;
     let cancelled = false;
-    mapplsToken()
-      .then((token) => {
-        if (cancelled) return;
-        const script = document.createElement("script");
-        script.src = `https://apis.mappls.com/advancedmaps/api/${token}/map_sdk?layer=vector&v=3.0`;
-        script.async = true;
-        script.onload = () => initMap();
-        document.head.appendChild(script);
+
+    loadSdk()
+      .then(() => waitFor(() => !!(window.mappls && window.mappls.Map) && !!containerRef.current))
+      .then(() => {
+        if (cancelled || mapRef.current || !containerRef.current) return;
+        const map = new window.mappls.Map(containerRef.current, {
+          center: [12.95, 77.6],
+          zoom: 11,
+          zoomControl: true,
+        });
+        mapRef.current = map;
+        if (typeof map.on === "function") map.on("load", () => !cancelled && setReady(true));
+        else setReady(true);
+        setTimeout(() => !cancelled && setReady(true), 1500);
       })
-      .catch(() => setConfigured(false));
+      .catch((e) => {
+        console.error("[Mappls]", e);
+        setConfigured(false);
+      });
+
     return () => {
       cancelled = true;
     };
   }, [configured]);
 
-  function initMap() {
-    if (!window.mappls || !containerRef.current || mapRef.current) return;
-    try {
-      mapRef.current = new window.mappls.Map(containerRef.current, {
-        center: [12.95, 77.6],
-        zoom: 11,
-        zoomControl: true,
-      });
-    } catch {
-      setConfigured(false);
-    }
-  }
-
   useEffect(() => {
-    if (configured !== true || !mapRef.current || !window.mappls || !prediction) return;
+    if (!ready || !mapRef.current || !window.mappls || !prediction) return;
     const map = mapRef.current;
     overlaysRef.current.forEach((o) => {
       try {
@@ -70,41 +99,44 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
     overlaysRef.current = [];
     const { latitude, longitude } = prediction.event;
     try {
-      const circle = new window.mappls.Circle({
-        map,
-        center: { lat: latitude, lng: longitude },
-        radius: prediction.impact_radius_km * 1000,
-        fillColor: "#ef4444",
-        fillOpacity: 0.12,
-        strokeColor: "#ef4444",
-        strokeWeight: 1,
-      });
-      overlaysRef.current.push(circle);
-      const marker = new window.mappls.Marker({ map, position: { lat: latitude, lng: longitude } });
-      overlaysRef.current.push(marker);
-      prediction.affected_junctions.slice(0, 40).forEach((a) => {
-        const m = new window.mappls.Circle({
+      overlaysRef.current.push(
+        new window.mappls.Circle({
           map,
-          center: { lat: a.lat, lng: a.lon },
-          radius: 120,
-          fillColor: RISK_FILL[a.risk] || "#64748b",
-          fillOpacity: 0.9,
-          strokeWeight: 0,
-        });
-        overlaysRef.current.push(m);
+          center: { lat: latitude, lng: longitude },
+          radius: prediction.impact_radius_km * 1000,
+          fillColor: "#ef4444",
+          fillOpacity: 0.12,
+          strokeColor: "#ef4444",
+          strokeWeight: 1,
+        })
+      );
+      overlaysRef.current.push(
+        new window.mappls.Marker({ map, position: { lat: latitude, lng: longitude } })
+      );
+      prediction.affected_junctions.slice(0, 40).forEach((a) => {
+        overlaysRef.current.push(
+          new window.mappls.Circle({
+            map,
+            center: { lat: a.lat, lng: a.lon },
+            radius: 130,
+            fillColor: RISK_FILL[a.risk] || "#64748b",
+            fillOpacity: 0.9,
+            strokeWeight: 0,
+          })
+        );
       });
       map.setCenter?.([latitude, longitude]);
       map.setZoom?.(13);
-    } catch {
-      /* overlay failures are non-fatal */
+    } catch (e) {
+      console.error("[Mappls overlay]", e);
     }
-  }, [prediction, configured]);
+  }, [prediction, ready]);
 
   if (configured === true) {
     return (
-      <div className="glass h-full relative overflow-hidden">
-        <div ref={containerRef} className="w-full h-full" />
-        <Badge text="Mappls live" />
+      <div className="glass h-full relative overflow-hidden" style={{ minHeight: 420 }}>
+        <div ref={containerRef} className="absolute inset-0" />
+        <Badge text={ready ? "Mappls live" : "loading map…"} />
       </div>
     );
   }
@@ -114,7 +146,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
 
 function Badge({ text }: { text: string }) {
   return (
-    <div className="absolute top-2 right-2 text-[10px] bg-black/40 text-slate-300 px-2 py-0.5 rounded">
+    <div className="absolute top-2 right-2 z-10 text-[10px] bg-black/50 text-slate-300 px-2 py-0.5 rounded">
       {text}
     </div>
   );
