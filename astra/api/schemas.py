@@ -21,3 +21,13 @@ class EventInput(BaseModel):
         if not self.junction and (self.latitude is None or self.longitude is None):
             raise ValueError("provide either junction or latitude+longitude")
         return self
+
+
+class DirectionsRequest(BaseModel):
+    source: str
+    destination: str
+
+
+class MatrixRequest(BaseModel):
+    sources: list[str]
+    destinations: list[str]

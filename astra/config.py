@@ -14,6 +14,14 @@ from pathlib import Path
 # Paths
 # ─────────────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
+except Exception:
+    pass
+
 DATA_DIR = ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 INTERIM_DIR = DATA_DIR / "interim"

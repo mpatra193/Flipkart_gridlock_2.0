@@ -34,3 +34,8 @@ def test_endpoints():
 
         assert len(client.get("/api/junctions").json()) == 294
         assert client.get("/api/stats/overview").json()["total_events"] == 8173
+
+        status = client.get("/api/mappls/status").json()
+        assert "configured" in status
+        if not status["configured"]:
+            assert client.get("/api/mappls/token").status_code == 503

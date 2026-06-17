@@ -8,8 +8,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .. import config
+from ..integrations import mappls
 from ..pipeline import AstraPipeline
-from .schemas import EventInput
+from .schemas import DirectionsRequest, EventInput, MatrixRequest
 
 state: dict = {}
 
@@ -80,6 +81,41 @@ def events(limit: int = 2000):
     sub = sub.sort_values("start_datetime", ascending=False).head(limit)
     sub["start_datetime"] = sub["start_datetime"].astype(str)
     return _records(sub)
+
+
+@app.get("/api/mappls/status")
+def mappls_status():
+    return {"configured": mappls.configured()}
+
+
+@app.get("/api/mappls/token")
+def mappls_token():
+    if not mappls.configured():
+        raise HTTPException(status_code=503, detail="MapMyIndia credentials not configured")
+    try:
+        return {"token": mappls.get_token()}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.post("/api/mappls/directions")
+def mappls_directions(req: DirectionsRequest):
+    if not mappls.configured():
+        raise HTTPException(status_code=503, detail="MapMyIndia credentials not configured")
+    try:
+        return mappls.directions(req.source, req.destination)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.post("/api/mappls/matrix")
+def mappls_matrix(req: MatrixRequest):
+    if not mappls.configured():
+        raise HTTPException(status_code=503, detail="MapMyIndia credentials not configured")
+    try:
+        return mappls.distance_matrix(req.sources, req.destinations)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @app.get("/api/stats/overview")
