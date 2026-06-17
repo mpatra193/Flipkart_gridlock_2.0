@@ -87,6 +87,10 @@ export interface Prediction {
   risk_level: RiskLevel;
   esi_components: Record<string, number>;
   duration_hours: number;
+  duration_p10?: number;
+  duration_p90?: number;
+  planning_duration_hours?: number;
+  long_event_probability?: number | null;
   duration_source: string;
   impact_radius_km: number;
   confidence: number;

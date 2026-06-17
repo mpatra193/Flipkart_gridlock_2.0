@@ -78,23 +78,34 @@ class AstraPipeline:
         priority_high = int(event.get("priority_high", 1))
         cause = event["event_cause"]
 
+        model_event = {
+            "event_cause": cause, "corridor": corridor,
+            "event_type": event.get("event_type") or "unknown",
+            "veh_type": event.get("veh_type") or "unknown",
+            "police_station": event.get("police_station") or "unknown",
+            "zone": event.get("zone") or "unknown", "junction": junction or "unknown",
+            "road_closure": road_closure, "priority_high": priority_high,
+            "latitude": lat, "longitude": lon, "hour": hour, "weekday": weekday,
+            "month": int(event.get("month") or 0),
+        }
+
         if event.get("duration_override") is not None:
-            duration = float(event["duration_override"])
+            ov = float(event["duration_override"])
+            p10 = p50 = planning = ov
+            long_prob = None
+            model_conf = None
             duration_source = "override"
         else:
-            duration = self.model.predict_one(
-                {
-                    "event_cause": cause, "corridor": corridor, "road_closure": road_closure,
-                    "priority_high": priority_high, "hour": hour, "weekday": weekday,
-                    "latitude": lat, "longitude": lon,
-                }
-            )
+            q = self.model.predict_quantiles(model_event)
+            p10, p50, planning = q["p10"], q["p50"], q["p90"]
+            long_prob = q["long_event_probability"]
+            model_conf = q["confidence"]
             duration_source = "predicted"
 
         jc = self.risk.junction_component(junction=junction, zone=event.get("zone"), corridor=corridor)
-        esi = compute_esi(cause, duration, road_closure, hour, is_weekend, jc)
+        esi = compute_esi(cause, planning, road_closure, hour, is_weekend, jc)
 
-        impact_radius = estimate_impact_radius(duration, road_closure, is_peak, cause)
+        impact_radius = estimate_impact_radius(planning, road_closure, is_peak, cause)
         affected = self._affected(junction, lat, lon, impact_radius)
 
         similar = self.similar.query(
@@ -102,14 +113,16 @@ class AstraPipeline:
                 "event_cause": cause, "road_closure": road_closure, "hour": hour,
                 "weekday": weekday, "latitude": lat, "longitude": lon,
             },
-            predicted_duration=duration,
+            predicted_duration=p50,
         )
 
         diversions = self.diversion.recommend(
             lat, lon, corridor, impact_radius, affected, similar_count=similar["match_count"]
         )
 
-        resources = resource_planner.plan(cause, road_closure, impact_radius, duration, affected)
+        resources = resource_planner.plan(cause, road_closure, impact_radius, planning, affected)
+
+        confidence = round(model_conf * 100, 1) if model_conf is not None else similar["confidence"]["score"]
 
         return {
             "event": {
@@ -120,10 +133,14 @@ class AstraPipeline:
             "esi": esi.esi,
             "risk_level": esi.risk_level,
             "esi_components": esi.components,
-            "duration_hours": round(duration, 2),
+            "duration_hours": round(p50, 2),
+            "duration_p10": round(p10, 2),
+            "duration_p90": round(planning, 2),
+            "planning_duration_hours": round(planning, 2),
+            "long_event_probability": long_prob,
             "duration_source": duration_source,
             "impact_radius_km": impact_radius,
-            "confidence": similar["confidence"]["score"],
+            "confidence": confidence,
             "similar_event_count": similar["match_count"],
             "affected_junctions": affected,
             "similar": similar,

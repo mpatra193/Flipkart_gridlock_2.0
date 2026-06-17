@@ -497,7 +497,7 @@ The full system is **implemented and runnable end-to-end**, built and committed 
 | Data preprocessing + feature engineering | ✅ `astra/data/` · `scripts/01_preprocess.py` |
 | Junction / zone / corridor risk tables (Bayesian shrinkage) | ✅ `astra/memory/` · `scripts/02_build_memory.py` |
 | ESI scoring (5-component, cascade fallback) | ✅ `astra/scoring/esi.py` |
-| Duration model (LightGBM, log-space L1, permutation importance) | ✅ `astra/models/` · `scripts/04_train_duration.py` |
+| Duration model (LightGBM risk-aware: p10/p50/p90 quantiles + long-event classifier) | ✅ `astra/models/` · `scripts/04_train_duration.py` |
 | Impact radius engine | ✅ `astra/engines/impact_radius.py` |
 | Spillover propagation graph (NetworkX, 294 nodes) | ✅ `astra/engines/spillover.py` |
 | Similar event engine (weighted k-NN + confidence) | ✅ `astra/engines/similar_events.py` |
@@ -508,10 +508,13 @@ The full system is **implemented and runnable end-to-end**, built and committed 
 | React + TypeScript dashboard | ✅ `frontend/` |
 | Docker + AWS deployment | ✅ `Dockerfile` · `docker-compose.yml` · `docs/DEPLOYMENT.md` |
 
-**Measured model performance** (time-split test): Median AE 0.89 h, log-R² 0.17,
-beats the per-cause human baseline by 11% on log-MAE. `event_cause` confirmed the
-dominant feature by unbiased permutation importance. Full pipeline latency: model
-+ all engines run in ~13 ms per event after a 0.3 s startup load.
+**Measured model performance** (newest-20% time-split): the risk-aware duration
+pipeline gives Median AE 0.67 h, p10–p90 interval hit-rate 79%, and a long-event
+(>6 h) classifier with **ROC-AUC 0.87** — the strongest learned signal. Severity is
+driven by the planning (p90) duration and confidence by the p10–p90 band width, so
+the system differentiates (waterlogging+closure+peak → CRITICAL; 3 AM breakdown →
+LOW) instead of clustering low. Full pipeline latency: ~15 ms per event after a
+~0.4 s startup load.
 
 ---
 

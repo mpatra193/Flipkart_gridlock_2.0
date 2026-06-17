@@ -144,38 +144,51 @@ Same event 2 AM Sun, no closure: `12 + 11.25 + 0 + 0.15·(5·0.6) + 7.2 = 30.9` 
 
 ---
 
-## 5. Duration model (the only ML)
+## 5. Duration model (the only ML) — risk-aware pipeline
 
-**Target:** `log1p(duration_hours)`; predictions are `expm1` and clipped to [0,168].
+Exact duration is weakly predictable from this data, so the model is **risk-aware**:
+it predicts a quantile band + long-event probability rather than a single point.
+All four sub-models are LightGBM Pipelines (`OneHotEncoder(min_frequency=5)` on the
+7 categoricals + `SimpleImputer(median)` on numerics), trained on `log1p(duration)`.
 
-**Features (8):** `event_cause`, `corridor` (categorical, native LightGBM);
-`road_closure`, `priority_high`, `hour`, `weekday`, `latitude`, `longitude`.
-Excluded: `junction` (too sparse), `affected_distance` (~0 variance), free text,
-`status` (leaks the label).
+**Target:** `log1p(duration_hours)`, `0 < duration ≤ 168 h`. **Split:** time-ordered
+80/20 (newest 20% test).
 
-**Model:** LightGBM, **objective = L1 (MAE) in log space** → predicts the
-conditional median of log-duration. Chosen in an objective bake-off over
-L2 / Tweedie(1.2,1.5,1.8) / Gamma / raw-L1 — L1-log won on log-R², Median-AE, and
-within-2×.
+**Features (21):** 7 categorical — `event_cause, corridor, event_type, veh_type,
+police_station, zone, junction` (null → `unknown`); 14 numeric — `road_closure,
+priority_high, latitude, longitude, hour, weekday, month, is_weekend, is_peak,
+is_night` + cyclic `hour_sin/cos, weekday_sin/cos`.
 
-**Split:** time-ordered 80/20 (oldest train, newest test); early stopping on a
-validation tail of the train portion.
+**Sub-models:**
+- `model_p50_raw` — LightGBM MAE regressor (the raw point estimate)
+- `model_p10`, `model_p90` — LightGBM quantile regressors (α = 0.10, 0.90)
+- `model_long_clf` — LightGBM binary classifier for P(duration > 6 h)
 
-**Why MAE is not the headline:** the global-median constant is the MAE-optimal
-predictor for this sharply-peaked target, and duration has a large *irreducible*
-tail (a few 100 h+ events no feature can predict). Honest metrics:
+**Derived outputs** (blend constants in `settings`):
+```
+weight   = clip((long_prob − 0.30) / 0.75, 0, 1)
+p50      = (1 − weight)·anchor + weight·raw_p50      # anchor = train-median ≈ 0.86 h
+p90      = max(p90_quantile·1.30 + long_prob·15, p50)
+confidence = 1 − min((p90 − p10)/168, 1)
+```
+- `duration_hours` = **p50** (headline display)
+- `planning_duration_hours` = **p90** (fed to ESI severity, impact radius, resources)
+- `long_event_probability`, `confidence` (uncertainty messaging)
+
+**Measured (newest-20% test):**
 
 | metric | value | meaning |
 |---|---|---|
-| Median AE | 0.89 h | typical error, robust to the tail |
-| within-2× | ~37% | predictions within a factor of 2 of actual |
-| log-R² | 0.17 | variance explained in log space (a constant gives 0) |
-| log-MAE | 0.772 | vs per-cause baseline 0.871 (beats by 11%) and global-median 0.763 |
+| Median AE | 0.67 h | typical p50 error |
+| within-2× | 41% | p50 within a factor of 2 |
+| log-R² | 0.12 | p50 variance explained in log space |
+| interval hit-rate (p10–p90) | 79% | calibration of the band (target ~80%) |
+| long-event ROC-AUC | 0.87 | **the strongest learned signal** |
 
-**Feature importance:** gain importance is cardinality-biased (inflates lat/lon).
-**Permutation importance** (unbiased, on the test set) shows `event_cause`
-overwhelmingly dominant (+0.314 Δlog-MAE) with everything else near zero — the
-design's expectation, confirmed by an independent measure.
+**Design note:** exact p50 has limited signal (that is a property of the data, not
+the model). The value is the **long-event risk** (AUC 0.87) and the **calibrated
+p10–p90 band**, which drive severity (via p90), confidence (via band width), and
+uncertainty messaging. This replaced an earlier single-point L1 model.
 
 ---
 

@@ -24,9 +24,23 @@ export default function PredictionPanel({ p }: { p: Prediction }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 mt-3">
-        <Stat label="Duration" value={`${p.duration_hours} h`} sub={p.duration_source} />
+        <Stat
+          label="Duration (P50)"
+          value={`${p.duration_hours} h`}
+          sub={p.duration_p10 != null && p.duration_p90 != null ? `P10–P90: ${p.duration_p10}–${p.duration_p90} h` : p.duration_source}
+        />
+        <Stat
+          label="Plan for (P90)"
+          value={p.planning_duration_hours != null ? `${p.planning_duration_hours} h` : `${p.duration_hours} h`}
+          sub="worst-case"
+        />
         <Stat label="Impact radius" value={`${p.impact_radius_km} km`} />
-        <Stat label="Confidence" value={`${p.confidence}%`} sub={`${p.similar_event_count} similar`} />
+        <Stat
+          label="Long-event risk"
+          value={p.long_event_probability != null ? `${Math.round(p.long_event_probability * 100)}%` : "—"}
+          sub=">6 h probability"
+        />
+        <Stat label="Confidence" value={`${p.confidence}%`} sub="P10–P90 band" />
         <Stat label="Affected" value={`${p.affected_junctions.length}`} sub="junctions" />
       </div>
 
