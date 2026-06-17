@@ -18,6 +18,8 @@
 
 ## 30-Second Pitch
 
+<iframe src="https://watchclueso.com/embed/q65s26c02mm3j2be" style="width:100%;aspect-ratio:16/9;border:none" allow="fullscreen; autoplay; picture-in-picture"></iframe>
+
 > Every traffic event — a breakdown, a procession, a flooded road — is currently handled the same way: an officer looks at it, guesses how bad it is, and deploys resources from memory. **ASTRA replaces the guess.**
 >
 > Feed it an event (cause, location, time, road-closure status) and in under a second it tells you: how severe it is (0–100 score), how long it will likely last (ML-predicted), how far the congestion will spread (km), exactly which junctions will be hit and how badly, which corridors to divert traffic to, how many officers/barricades/patrol vehicles to deploy and *where*, and — critically — **what happened the last 14 times something like this occurred.**
