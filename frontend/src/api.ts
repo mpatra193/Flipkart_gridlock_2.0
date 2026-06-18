@@ -10,7 +10,11 @@ export async function predict(input: EventInput): Promise<Prediction> {
 
 export async function postFeedback(fb: FeedbackInput) {
   const { data } = await api.post("/feedback", fb);
-  return data as { saved: boolean; summary: { total: number; by_cause: Record<string, number> } };
+  return data as {
+    saved: boolean;
+    insight?: { delay_factors?: string[]; inferred_effective?: string; inferred_hours?: number; notes_summary?: string };
+    summary: { total: number; by_cause: Record<string, number> };
+  };
 }
 
 export async function getJunctions(): Promise<Junction[]> {

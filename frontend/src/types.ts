@@ -129,6 +129,7 @@ export interface Prediction {
   location_confidence?: string;
   calibration?: { factor: number; n: number; scope: string };
   past_reports?: { count: number; avg_actual_hours: number | null };
+  top_delay_factors?: { factor: string; count: number }[];
   similar_event_count: number;
   affected_junctions: AffectedJunction[];
   similar: {

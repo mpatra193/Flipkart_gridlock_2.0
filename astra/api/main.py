@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .. import config
-from ..integrations import mappls
+from ..integrations import mappls, notes_ai
 from ..pipeline import AstraPipeline
 from .schemas import DirectionsRequest, EventInput, FeedbackInput, MatrixRequest
 
@@ -67,7 +67,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "loaded": "pipeline" in state}
+    return {"status": "ok", "loaded": "pipeline" in state, "notes_ai": notes_ai.configured()}
 
 
 @app.post("/api/predict")
@@ -81,8 +81,18 @@ def predict(event: EventInput):
 @app.post("/api/feedback")
 def add_feedback(fb: FeedbackInput):
     store = state["pipeline"].feedback
-    store.add(fb.model_dump())
-    return {"saved": True, "summary": store.summary()}
+    record = fb.model_dump()
+    insight = notes_ai.extract(record.get("notes"), record.get("event_cause"), record.get("junction"))
+    if insight.get("delay_factors"):
+        record["delay_factors"] = insight["delay_factors"]
+    if insight.get("notes_summary"):
+        record["notes_summary"] = insight["notes_summary"]
+    if not record.get("diversion_effective") and insight.get("inferred_effective"):
+        record["diversion_effective"] = insight["inferred_effective"]
+    if record.get("actual_hours") is None and insight.get("inferred_hours"):
+        record["actual_hours"] = insight["inferred_hours"]
+    store.add(record)
+    return {"saved": True, "insight": insight, "summary": store.summary()}
 
 
 @app.get("/api/feedback/summary")

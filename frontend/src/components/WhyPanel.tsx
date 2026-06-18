@@ -67,6 +67,23 @@ export default function WhyPanel({ p }: { p: Prediction }) {
           />
         )}
       </div>
+
+      {p.top_delay_factors && p.top_delay_factors.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[10px] uppercase tracking-wider t-text-muted font-medium mb-2">Common delay causes</div>
+          <div className="flex flex-wrap gap-1.5">
+            {p.top_delay_factors.map((d) => (
+              <span
+                key={d.factor}
+                className="text-[10px] px-2 py-0.5 rounded-md t-text-2"
+                style={{ background: "var(--bg-card-inner)" }}
+              >
+                {d.factor.replace(/_/g, " ")}{d.count > 1 ? ` ×${d.count}` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -16,12 +16,13 @@ export default function FeedbackForm({ p, onSaved }: { p: Prediction; onSaved: (
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [insight, setInsight] = useState<{ delay_factors?: string[]; notes_summary?: string; inferred_effective?: string } | null>(null);
 
   async function submit() {
     if (!actual) return;
     setSaving(true);
     try {
-      await postFeedback({
+      const res = await postFeedback({
         junction: p.event.junction,
         event_cause: p.event.event_cause,
         hour: p.event.hour,
@@ -35,6 +36,7 @@ export default function FeedbackForm({ p, onSaved }: { p: Prediction; onSaved: (
         diversion_effective: effective || null,
         notes: notes || null,
       });
+      setInsight(res.insight || null);
       setDone(true);
       onSaved();
     } finally {
@@ -50,8 +52,23 @@ export default function FeedbackForm({ p, onSaved }: { p: Prediction; onSaved: (
           Future predictions for <span className="t-text-2">{p.event.event_cause.replace(/_/g, " ")}</span> at{" "}
           <span className="t-text-2">{p.event.junction}</span> now calibrate to this. Re-running the simulation reflects it.
         </div>
+        {insight && (insight.notes_summary || (insight.delay_factors && insight.delay_factors.length > 0)) && (
+          <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <div className="text-[10px] uppercase tracking-wider t-text-muted font-medium mb-1.5">AI extracted from notes</div>
+            {insight.notes_summary && <div className="text-[11px] t-text-3 mb-1.5">{insight.notes_summary}</div>}
+            {insight.delay_factors && insight.delay_factors.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {insight.delay_factors.map((f) => (
+                  <span key={f} className="text-[10px] px-2 py-0.5 rounded-md text-cyan-300" style={{ background: "rgba(34,211,238,0.08)" }}>
+                    {f.replace(/_/g, " ")}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <button
-          onClick={() => { setDone(false); setActual(""); setResources(""); setEffective(""); setNotes(""); }}
+          onClick={() => { setDone(false); setInsight(null); setActual(""); setResources(""); setEffective(""); setNotes(""); }}
           className="mt-3 text-[11px] t-text-muted underline"
         >
           Log another outcome

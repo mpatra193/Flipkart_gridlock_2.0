@@ -187,6 +187,7 @@ class AstraPipeline:
             p50 = float(min(p50 * f, 168))
             planning = float(min(planning * f, 168))
         past_reports = self.feedback.past_reports(cause, junction)
+        top_delay_factors = self.feedback.top_delay_factors(cause, junction)
 
         jc = self.risk.junction_component(junction=junction, zone=event.get("zone"), corridor=corridor)
         esi = compute_esi(cause, planning, road_closure, hour, is_weekend, jc)
@@ -258,6 +259,7 @@ class AstraPipeline:
             "location_confidence": location_confidence,
             "calibration": calibration,
             "past_reports": past_reports,
+            "top_delay_factors": top_delay_factors,
             "similar_event_count": similar["match_count"],
             "affected_junctions": affected,
             "similar": similar,

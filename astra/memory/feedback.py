@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -12,7 +13,7 @@ FIELDS = (
     "junction", "event_cause", "hour", "weekday",
     "predicted_p50", "predicted_p90", "esi",
     "actual_hours", "resources_used", "diversion_corridor",
-    "diversion_effective", "notes", "ts",
+    "diversion_effective", "notes", "delay_factors", "notes_summary", "ts",
 )
 
 
@@ -85,6 +86,18 @@ class FeedbackStore:
         n = len(vals)
         rate = (sum(vals) + k * 0.5) / (n + k)
         return {"rate": round(float(rate), 3), "n": n}
+
+    def top_delay_factors(self, cause, junction, limit=4):
+        def tally(recs):
+            c = Counter()
+            for r in recs:
+                for f in (r.get("delay_factors") or []):
+                    c[f] += 1
+            return c
+
+        jc = tally([r for r in self.records if r.get("event_cause") == cause and r.get("junction") == junction])
+        use = jc if jc else tally([r for r in self.records if r.get("event_cause") == cause])
+        return [{"factor": k, "count": v} for k, v in use.most_common(limit)]
 
     def summary(self):
         causes = {}
