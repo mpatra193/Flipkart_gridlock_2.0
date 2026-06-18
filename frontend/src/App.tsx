@@ -9,6 +9,31 @@ import SimilarPanel from "./components/SimilarPanel";
 import MapView from "./components/MapView";
 import OverviewView from "./components/Overview";
 
+function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 t-text-3 hover:t-text"
+      style={{ background: 'var(--bg-card-inner)', border: '1px solid var(--border-subtle)' }}
+      title={dark ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {dark ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState<"simulator" | "overview">("simulator");
   const [junctions, setJunctions] = useState<Junction[]>([]);
@@ -16,11 +41,24 @@ export default function App() {
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem("astra-theme");
+    return saved ? saved === "dark" : true;
+  });
 
   useEffect(() => {
     getJunctions().then(setJunctions).catch(() => setError("Backend not reachable on /api"));
     getOverview().then(setOverview).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("astra-theme", dark ? "dark" : "light");
+    if (dark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [dark]);
 
   async function runPredict(input: EventInput) {
     setLoading(true);
@@ -35,43 +73,77 @@ export default function App() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <header className="flex items-center justify-between px-6 py-3 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="text-2xl">🚦</div>
+    <div className="h-full flex flex-col t-bg theme-transition">
+      {/* ── Header ── */}
+      <header
+        className="flex items-center justify-between px-6 py-3 backdrop-blur-sm"
+        style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)' }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: 'var(--accent-glow)', border: '1px solid var(--border-subtle)' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="t-accent">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
           <div>
-            <div className="text-lg font-bold tracking-wide">ASTRA</div>
-            <div className="text-[11px] text-slate-400 -mt-1">Autonomous Strategic Traffic Response Assistant</div>
+            <div className="text-sm font-bold tracking-wide t-text">ASTRA</div>
+            <div className="text-[10px] t-text-muted font-medium tracking-wider uppercase -mt-0.5">Traffic Response AI</div>
           </div>
         </div>
-        <nav className="flex gap-1 text-sm">
-          {(["simulator", "overview"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-1.5 rounded-lg capitalize transition ${
-                tab === t ? "bg-cyan-500/20 text-cyan-300" : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </nav>
+
+        <div className="flex items-center gap-3">
+          <nav
+            className="flex items-center gap-1 rounded-xl p-1"
+            style={{ background: 'var(--bg-card-inner)', border: '1px solid var(--border-subtle)' }}
+          >
+            {(["simulator", "overview"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-4 py-1.5 rounded-lg text-[13px] font-medium capitalize transition-all duration-200 ${
+                  tab === t
+                    ? "t-accent"
+                    : "t-text-muted"
+                }`}
+                style={tab === t ? { background: 'var(--accent-glow)' } : undefined}
+              >
+                {t}
+              </button>
+            ))}
+          </nav>
+          <ThemeToggle dark={dark} onToggle={() => setDark(!dark)} />
+        </div>
       </header>
 
+      {/* ── Error Banner ── */}
       {error && (
-        <div className="bg-red-500/10 text-red-300 text-sm px-6 py-2 border-b border-red-500/20">{error}</div>
+        <div className="flex items-center gap-2 bg-red-500/10 text-red-400 text-sm px-6 py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+          <span className="text-red-400 font-bold">!</span>
+          {error}
+        </div>
       )}
 
+      {/* ── Content ── */}
       {tab === "simulator" ? (
-        <div className="flex-1 grid grid-cols-12 gap-3 p-3 overflow-hidden">
-          <div className="col-span-3 overflow-y-auto">
+        <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+          {/* Left sidebar */}
+          <div className="w-72 shrink-0 overflow-y-auto pb-4 custom-scroll">
             <EventForm junctions={junctions} loading={loading} onSubmit={runPredict} />
           </div>
-          <div className="col-span-5 min-h-0">
+
+          {/* Map */}
+          <div
+            className="flex-1 min-w-0 relative rounded-2xl overflow-hidden shadow-2xl"
+            style={{ border: '1px solid var(--border-subtle)' }}
+          >
             <MapView prediction={prediction} />
           </div>
-          <div className="col-span-4 overflow-y-auto space-y-3">
+
+          {/* Right sidebar */}
+          <div className="w-80 shrink-0 overflow-y-auto pb-4 space-y-3 custom-scroll">
             {prediction ? (
               <>
                 <PredictionPanel p={prediction} />
@@ -80,15 +152,18 @@ export default function App() {
                 <SimilarPanel s={prediction.similar} />
               </>
             ) : (
-              <div className="glass p-6 text-slate-400 text-sm">
-                Configure an event and run the simulation to see severity, impact spread, resource
-                deployment, and diversions.
+              <div className="glass p-8 text-center">
+                <div className="text-sm font-medium t-text-2 mb-1">No Simulation Running</div>
+                <div className="text-xs t-text-muted leading-relaxed">
+                  Configure an event and run the simulation to see severity, impact spread, resource
+                  deployment, and diversions.
+                </div>
               </div>
             )}
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 custom-scroll">
           <OverviewView overview={overview} />
         </div>
       )}

@@ -288,6 +288,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   return <FallbackMap prediction={prediction} />;
 }
 
+/* ─── Jammed Junctions Navbar ─── */
 function JamChips({
   list,
   picked,
@@ -300,30 +301,44 @@ function JamChips({
   if (!list.length) return null;
   return (
     <div className="absolute top-3 left-3 right-28 z-20">
-      <div className="glass shadow-xl shadow-black/40 flex items-center p-2 rounded-xl backdrop-blur-md bg-[#0a0e1a]/80 border-white/10">
-        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded-lg mr-2">
+      <div
+        className="flex items-center p-2 rounded-2xl backdrop-blur-xl shadow-lg"
+        style={{
+          background: 'var(--overlay-bg)',
+          border: '1px solid var(--border-subtle)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+        }}
+      >
+        {/* Live badge */}
+        <div
+          className="shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl mr-2"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}
+        >
           <div className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
           </div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300">Jammed</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500">Jammed</span>
         </div>
-        
-        <div 
-          className="flex-1 flex items-center gap-2 overflow-x-auto px-1 py-0.5 [&::-webkit-scrollbar]:hidden" 
+
+        {/* Scrollable chip list */}
+        <div
+          className="flex-1 flex items-center gap-1.5 overflow-x-auto px-1 py-0.5"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
+          <style>{`.jam-scroll::-webkit-scrollbar { display: none; }`}</style>
           {list.map((a) => {
             const isSelected = picked?.junction === a.junction;
             return (
               <button
                 key={a.junction}
                 onClick={() => onPick(a)}
-                className={`shrink-0 px-3 py-1.5 rounded-lg border transition-all duration-300 ease-out flex items-center gap-2 ${
-                  isSelected
-                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                    : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 hover:border-white/10"
-                }`}
+                className="jam-scroll shrink-0 px-3 py-1.5 rounded-xl transition-all duration-200 flex items-center gap-2"
+                style={{
+                  background: isSelected ? 'var(--overlay-chip-active-bg)' : 'var(--overlay-chip-bg)',
+                  border: isSelected ? '1px solid var(--overlay-chip-active-border)' : '1px solid transparent',
+                  color: isSelected ? 'var(--overlay-chip-active-text)' : 'var(--overlay-chip-text)',
+                }}
               >
                 <div className={`w-1.5 h-1.5 rounded-full ${a.risk === 'HIGH' ? 'bg-rose-500' : 'bg-orange-500'}`} />
                 <span className="text-xs font-medium whitespace-nowrap">{a.junction}</span>
@@ -336,6 +351,7 @@ function JamChips({
   );
 }
 
+/* ─── Route Info Card ─── */
 function RouteCard({
   picked,
   error,
@@ -347,26 +363,92 @@ function RouteCard({
 }) {
   const e = picked.escape!;
   return (
-    <div className="absolute bottom-2 left-2 z-20 glass p-3 w-72 text-xs">
-      <div className="flex items-start justify-between">
-        <div className="font-semibold text-slate-100">{picked.junction}</div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 leading-none">
-          ✕
+    <div
+      className="absolute bottom-3 left-3 z-20 rounded-2xl backdrop-blur-xl shadow-2xl w-80 overflow-hidden"
+      style={{
+        background: 'var(--overlay-bg)',
+        border: '1px solid var(--border-subtle)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: '1px solid var(--border-subtle)' }}
+      >
+        <div>
+          <div className="text-sm font-bold t-text">{picked.junction}</div>
+          <div className={`text-[11px] font-semibold risk-${picked.risk} mt-0.5`}>
+            {picked.risk} congestion · {(picked.congestion * 100).toFixed(0)}%
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-7 h-7 rounded-lg flex items-center justify-center t-text-muted transition-colors"
+          style={{ background: 'var(--bg-card-inner)' }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
-      <div className={`text-[10px] risk-${picked.risk}`}>{picked.risk} congestion</div>
-      {error && <div className="mt-2 text-rose-400">{error}</div>}
-      <div className="mt-2 text-emerald-300 font-medium">
-        ➜ Divert traffic {e.direction} toward {e.to_label}
-      </div>
-      {e.avoid.length > 0 && <div className="mt-1 text-rose-300">Avoid: {e.avoid.join(" / ")}</div>}
-      <ul className="mt-2 space-y-0.5 text-slate-400 list-disc list-inside">
-        {e.reason.map((r, i) => (
-          <li key={i}>{r}</li>
-        ))}
-      </ul>
-      <div className="mt-2 text-slate-300">
-        Confidence: <span className="text-emerald-300 font-semibold">{e.confidence}%</span>
+
+      {/* Body */}
+      <div className="px-4 py-3 space-y-3">
+        {error && (
+          <div className="text-[11px] text-rose-400 bg-rose-500/10 px-3 py-1.5 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {/* Direction */}
+        <div
+          className="flex items-start gap-2.5 p-3 rounded-xl"
+          style={{ background: 'rgba(0, 200, 83, 0.06)', border: '1px solid rgba(0, 200, 83, 0.12)' }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00C853" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+          <div className="text-[12px] font-medium" style={{ color: '#00C853' }}>
+            Divert traffic {e.direction} toward {e.to_label}
+          </div>
+        </div>
+
+        {/* Avoid */}
+        {e.avoid.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-red-400 font-semibold mb-1.5">Avoid</div>
+            <div className="flex flex-wrap gap-1">
+              {e.avoid.map((a, i) => (
+                <span key={i} className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-md font-medium">
+                  {a}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Reasons */}
+        {e.reason.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider t-text-muted font-semibold mb-1.5">Reasoning</div>
+            <ul className="space-y-1">
+              {e.reason.map((r, i) => (
+                <li key={i} className="text-[11px] t-text-3 flex items-start gap-1.5">
+                  <span className="t-text-muted mt-1">·</span>
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Confidence footer */}
+        <div
+          className="flex items-center justify-between text-[11px] pt-2"
+          style={{ borderTop: '1px solid var(--border-subtle)' }}
+        >
+          <span className="t-text-muted font-medium">Confidence</span>
+          <span className="text-emerald-400 font-bold text-sm">{e.confidence}%</span>
+        </div>
       </div>
     </div>
   );
@@ -374,7 +456,10 @@ function RouteCard({
 
 function Badge({ text }: { text: string }) {
   return (
-    <div className="absolute top-2 right-2 z-10 text-[10px] bg-black/50 text-slate-300 px-2 py-0.5 rounded">
+    <div
+      className="absolute top-2 right-2 z-10 text-[10px] px-2.5 py-1 rounded-lg backdrop-blur-sm"
+      style={{ background: 'var(--badge-bg)', color: 'var(--badge-text)', border: '1px solid var(--border-subtle)' }}
+    >
       {text}
     </div>
   );
@@ -389,7 +474,7 @@ function FallbackMap({ prediction }: { prediction: Prediction | null }) {
 
   if (!prediction) {
     return (
-      <div className="glass h-full flex items-center justify-center text-slate-500 text-sm">
+      <div className="glass h-full flex items-center justify-center t-text-muted text-sm">
         Map preview appears here after a simulation.
       </div>
     );

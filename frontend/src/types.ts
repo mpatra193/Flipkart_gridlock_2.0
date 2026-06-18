@@ -4,6 +4,7 @@ export interface EventInput {
   event_cause: string;
   junction?: string | null;
   corridor?: string | null;
+  zone?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   hour: number;
@@ -11,6 +12,9 @@ export interface EventInput {
   road_closure: boolean;
   priority_high: boolean;
   duration_override?: number | null;
+  veh_type?: string | null;
+  event_type?: string | null;
+  police_station?: string | null;
 }
 
 export interface EscapeRoute {
@@ -105,6 +109,8 @@ export interface Prediction {
   duration_source: string;
   impact_radius_km: number;
   confidence: number;
+  data_support?: string;
+  location_confidence?: string;
   similar_event_count: number;
   affected_junctions: AffectedJunction[];
   similar: {
@@ -128,6 +134,8 @@ export interface Junction {
   lon: number;
   incident_count: number;
   risk_score: number;
+  police_station?: string | null;
+  zone?: string | null;
 }
 
 export interface Overview {

@@ -1,7 +1,156 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
+/* ─── Light Mode (default) ─── */
 :root {
+  color-scheme: light;
+
+  --bg-primary: #e9efe9;
+  --bg-body-gradient-1: rgba(76, 175, 80, 0.05);
+  --bg-body-gradient-2: rgba(56, 142, 60, 0.03);
+  --bg-card: rgba(255, 255, 255, 0.82);
+  --bg-card-inner: rgba(45, 106, 54, 0.04);
+  --bg-card-inner-hover: rgba(45, 106, 54, 0.07);
+  --border-subtle: rgba(45, 106, 54, 0.1);
+  --border-strong: rgba(45, 106, 54, 0.16);
+  --accent-cyan: #0e7e6b;
+  --accent-glow: rgba(14, 126, 107, 0.12);
+
+  /* text */
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-tertiary: #64748b;
+  --text-muted: #94a3b8;
+  --text-on-accent: #ffffff;
+
+  /* map overlays */
+  --overlay-bg: rgba(255, 255, 255, 0.92);
+  --overlay-chip-bg: rgba(0, 0, 0, 0.04);
+  --overlay-chip-hover: rgba(0, 0, 0, 0.08);
+  --overlay-chip-active-bg: rgba(16, 185, 129, 0.12);
+  --overlay-chip-active-border: rgba(16, 185, 129, 0.4);
+  --overlay-chip-text: #334155;
+  --overlay-chip-active-text: #065f46;
+
+  /* inputs */
+  --input-bg: rgba(0, 0, 0, 0.03);
+  --input-border: rgba(0, 0, 0, 0.1);
+  --input-text: #1e293b;
+  --input-focus-border: rgba(8, 145, 178, 0.4);
+  --input-focus-ring: rgba(8, 145, 178, 0.15);
+
+  /* range */
+  --range-track: rgba(0, 0, 0, 0.08);
+  --range-thumb: #0891b2;
+  --range-thumb-glow: rgba(8, 145, 178, 0.3);
+
+  /* select */
+  --select-arrow: %2364748b;
+  --select-option-bg: #ffffff;
+
+  /* scrollbar */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.1);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.2);
+
+  /* button */
+  --btn-primary-bg: #0891b2;
+  --btn-primary-hover: #0e7490;
+  --btn-primary-text: #ffffff;
+
+  /* badge/status */
+  --badge-bg: rgba(255, 255, 255, 0.8);
+  --badge-text: #64748b;
+
+  /* risk highlights */
+  --risk-low: #059669;
+  --risk-medium: #d97706;
+  --risk-high: #ea580c;
+  --risk-critical: #dc2626;
+
+  /* severity card gradients - light */
+  --severity-low-from: rgba(5, 150, 105, 0.1);
+  --severity-low-to: rgba(5, 150, 105, 0.03);
+  --severity-low-border: rgba(5, 150, 105, 0.15);
+  --severity-medium-from: rgba(217, 119, 6, 0.1);
+  --severity-medium-to: rgba(217, 119, 6, 0.03);
+  --severity-medium-border: rgba(217, 119, 6, 0.15);
+  --severity-high-from: rgba(234, 88, 12, 0.1);
+  --severity-high-to: rgba(234, 88, 12, 0.03);
+  --severity-high-border: rgba(234, 88, 12, 0.15);
+  --severity-critical-from: rgba(220, 38, 38, 0.1);
+  --severity-critical-to: rgba(220, 38, 38, 0.03);
+  --severity-critical-border: rgba(220, 38, 38, 0.15);
+}
+
+/* ─── Dark Mode ─── */
+.dark {
   color-scheme: dark;
+
+  --bg-primary: #06090f;
+  --bg-body-gradient-1: rgba(34, 211, 238, 0.06);
+  --bg-body-gradient-2: rgba(139, 92, 246, 0.04);
+  --bg-card: rgba(255, 255, 255, 0.025);
+  --bg-card-inner: rgba(255, 255, 255, 0.03);
+  --bg-card-inner-hover: rgba(255, 255, 255, 0.05);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.1);
+  --accent-cyan: #22d3ee;
+  --accent-glow: rgba(34, 211, 238, 0.15);
+
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --text-muted: #64748b;
+  --text-on-accent: #0c1425;
+
+  --overlay-bg: rgba(10, 14, 26, 0.85);
+  --overlay-chip-bg: rgba(255, 255, 255, 0.05);
+  --overlay-chip-hover: rgba(255, 255, 255, 0.1);
+  --overlay-chip-active-bg: rgba(16, 185, 129, 0.2);
+  --overlay-chip-active-border: rgba(16, 185, 129, 0.5);
+  --overlay-chip-text: #94a3b8;
+  --overlay-chip-active-text: #a7f3d0;
+
+  --input-bg: rgba(255, 255, 255, 0.04);
+  --input-border: rgba(255, 255, 255, 0.06);
+  --input-text: #e2e8f0;
+  --input-focus-border: rgba(34, 211, 238, 0.4);
+  --input-focus-ring: rgba(34, 211, 238, 0.2);
+
+  --range-track: rgba(255, 255, 255, 0.08);
+  --range-thumb: #22d3ee;
+  --range-thumb-glow: rgba(34, 211, 238, 0.4);
+
+  --select-arrow: %2394a3b8;
+  --select-option-bg: #111827;
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.15);
+
+  --btn-primary-bg: #22d3ee;
+  --btn-primary-hover: #67e8f9;
+  --btn-primary-text: #0c1425;
+
+  --badge-bg: rgba(0, 0, 0, 0.5);
+  --badge-text: #cbd5e1;
+
+  --risk-low: #34d399;
+  --risk-medium: #fbbf24;
+  --risk-high: #fb923c;
+  --risk-critical: #f87171;
+
+  --severity-low-from: rgba(52, 211, 153, 0.2);
+  --severity-low-to: rgba(52, 211, 153, 0.05);
+  --severity-low-border: rgba(52, 211, 153, 0.2);
+  --severity-medium-from: rgba(251, 191, 36, 0.2);
+  --severity-medium-to: rgba(251, 191, 36, 0.05);
+  --severity-medium-border: rgba(251, 191, 36, 0.2);
+  --severity-high-from: rgba(251, 146, 60, 0.2);
+  --severity-high-to: rgba(251, 146, 60, 0.05);
+  --severity-high-border: rgba(251, 146, 60, 0.2);
+  --severity-critical-from: rgba(248, 113, 113, 0.2);
+  --severity-critical-to: rgba(248, 113, 113, 0.05);
+  --severity-critical-border: rgba(248, 113, 113, 0.2);
 }
 
 html,
@@ -12,26 +161,98 @@ body,
 }
 
 body {
-  background: #0a0e1a;
-  color: #e2e8f0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg-primary);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--bg-body-gradient-1), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, var(--bg-body-gradient-2), transparent);
+  color: var(--text-secondary);
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* ─── Glass card ─── */
 .glass {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 
-.risk-LOW {
-  color: #22c55e;
+/* ─── Risk colors ─── */
+.risk-LOW { color: var(--risk-low); }
+.risk-MEDIUM { color: var(--risk-medium); }
+.risk-HIGH { color: var(--risk-high); }
+.risk-CRITICAL { color: var(--risk-critical); }
+
+/* ─── Scrollbar ─── */
+.custom-scroll::-webkit-scrollbar { width: 4px; }
+.custom-scroll::-webkit-scrollbar-track { background: transparent; }
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 99px;
 }
-.risk-MEDIUM {
-  color: #eab308;
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
-.risk-HIGH {
-  color: #f97316;
+
+/* ─── Range input ─── */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--range-track);
+  border-radius: 99px;
+  outline: none;
 }
-.risk-CRITICAL {
-  color: #ef4444;
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--range-thumb);
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--range-thumb-glow);
+  transition: transform 0.15s ease;
 }
+input[type='range']::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* ─── Select ─── */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='var(--select-arrow)' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px !important;
+}
+select option {
+  background: var(--select-option-bg);
+}
+
+/* ─── Theme-aware utility classes ─── */
+.t-bg { background: var(--bg-primary); }
+.t-card-inner { background: var(--bg-card-inner); }
+.t-border { border-color: var(--border-subtle); }
+.t-border-strong { border-color: var(--border-strong); }
+.t-text { color: var(--text-primary); }
+.t-text-2 { color: var(--text-secondary); }
+.t-text-3 { color: var(--text-tertiary); }
+.t-text-muted { color: var(--text-muted); }
+.t-accent { color: var(--accent-cyan); }
+
+/* ─── Pulse animation ─── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+

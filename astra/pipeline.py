@@ -210,6 +210,14 @@ class AstraPipeline:
         else:
             data_support = "high"
 
+        known = sum([
+            bool(junction and junction != "unknown"),
+            bool(corridor and corridor not in (None, "unknown") and corridor not in NON_CORRIDORS),
+            bool(event.get("zone") and event.get("zone") != "unknown"),
+            bool(event.get("police_station") and event.get("police_station") != "unknown"),
+        ])
+        location_confidence = "High" if known >= 3 else "Medium" if known == 2 else "Low"
+
         return {
             "event": {
                 "event_cause": cause, "junction": junction, "corridor": corridor,
@@ -228,6 +236,7 @@ class AstraPipeline:
             "impact_radius_km": impact_radius,
             "confidence": confidence,
             "data_support": data_support,
+            "location_confidence": location_confidence,
             "similar_event_count": similar["match_count"],
             "affected_junctions": affected,
             "similar": similar,

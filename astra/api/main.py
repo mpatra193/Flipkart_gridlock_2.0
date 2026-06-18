@@ -29,10 +29,27 @@ def _clean(obj):
     return obj
 
 
+def _dominant_attr(df, col):
+    if col not in df.columns or "junction" not in df.columns:
+        return {}
+    tmp = pd.DataFrame({
+        "junction": df["junction"].astype("string").str.strip(),
+        "val": df[col].astype("string").str.strip(),
+    })
+    tmp = tmp[(tmp["junction"].notna()) & (tmp["junction"] != "") & (tmp["val"].notna()) & (tmp["val"] != "")]
+    if tmp.empty:
+        return {}
+    return tmp.groupby("junction")["val"].agg(lambda s: s.mode().iloc[0]).to_dict()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     state["pipeline"] = AstraPipeline.load()
-    state["junctions"] = pd.read_parquet(config.JUNCTION_RISK)
+    junctions = pd.read_parquet(config.JUNCTION_RISK)
+    clean = pd.read_parquet(config.EVENTS_CLEAN)
+    junctions["police_station"] = junctions["junction"].map(_dominant_attr(clean, "police_station"))
+    junctions["zone"] = junctions["junction"].map(_dominant_attr(clean, "zone"))
+    state["junctions"] = junctions
     state["corridors"] = pd.read_parquet(config.CORRIDOR_RISK)
     state["events"] = pd.read_parquet(config.EVENTS_SCORED)
     yield
@@ -64,7 +81,7 @@ def predict(event: EventInput):
 @app.get("/api/junctions")
 def junctions():
     df = state["junctions"]
-    cols = ["junction", "lat", "lon", "incident_count", "avg_duration", "road_closure_rate", "risk_score"]
+    cols = ["junction", "lat", "lon", "incident_count", "avg_duration", "road_closure_rate", "risk_score", "police_station", "zone"]
     return _records(df[[c for c in cols if c in df.columns]])
 
 

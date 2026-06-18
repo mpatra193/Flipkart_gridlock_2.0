@@ -48,8 +48,20 @@ def directions(source: str, destination: str) -> dict:
     s_lat, s_lng = (p.strip() for p in source.split(","))
     d_lat, d_lng = (p.strip() for p in destination.split(","))
     url = f"{BASE}/{token}/route_eta/driving/{s_lng},{s_lat};{d_lng},{d_lat}"
-    resp = httpx.get(url, params={"geometries": "geojson", "overview": "full"}, timeout=20)
-    resp.raise_for_status()
+    params = {"geometries": "geojson", "overview": "full"}
+    timeout = httpx.Timeout(9.0, connect=4.0)
+    resp = None
+    last_exc = None
+    for _ in range(2):
+        try:
+            resp = httpx.get(url, params=params, timeout=timeout)
+            resp.raise_for_status()
+            break
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            resp = None
+    if resp is None:
+        raise RuntimeError(f"route_eta request failed: {last_exc}")
     data = resp.json()
     routes = data.get("routes") or []
     if not routes:
