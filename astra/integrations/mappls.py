@@ -43,60 +43,26 @@ def _lnglat(latlng: str) -> str:
     return f"{parts[1]},{parts[0]}" if len(parts) == 2 else latlng
 
 
-def _in_india(lat, lng):
-    return 6.0 <= lat <= 37.0 and 68.0 <= lng <= 98.0
-
-
-def _decode_polyline(enc, precision=5):
-    factor = float(10 ** precision)
-    coords, index, lat, lng = [], 0, 0, 0
-    length = len(enc)
-    while index < length:
-        for is_lng in (False, True):
-            shift, result = 0, 0
-            while True:
-                b = ord(enc[index]) - 63
-                index += 1
-                result |= (b & 0x1F) << shift
-                shift += 5
-                if b < 0x20:
-                    break
-            delta = ~(result >> 1) if result & 1 else (result >> 1)
-            if is_lng:
-                lng += delta
-            else:
-                lat += delta
-        coords.append([lat / factor, lng / factor])
-    return coords
-
-
-def _to_path(geometry):
-    if isinstance(geometry, dict):
-        return [[c[1], c[0]] for c in geometry.get("coordinates", [])]
-    if isinstance(geometry, str) and geometry:
-        path = _decode_polyline(geometry, 5)
-        if path and not _in_india(path[0][0], path[0][1]):
-            path = _decode_polyline(geometry, 6)
-        return path
-    return []
-
-
 def directions(source: str, destination: str) -> dict:
     token = get_token()
-    url = f"{BASE}/{token}/route_adv/driving/{_lnglat(source)};{_lnglat(destination)}"
-    resp = httpx.get(
-        url,
-        params={"geometries": "geojson", "overview": "full", "steps": "false"},
-        timeout=15,
-    )
+    s_lat, s_lng = (p.strip() for p in source.split(","))
+    d_lat, d_lng = (p.strip() for p in destination.split(","))
+    url = f"{BASE}/{token}/route_eta/driving/{s_lng},{s_lat};{d_lng},{d_lat}"
+    resp = httpx.get(url, params={"geometries": "geojson", "overview": "full"}, timeout=20)
     resp.raise_for_status()
     data = resp.json()
-    route = (data.get("routes") or [{}])[0]
+    routes = data.get("routes") or []
+    if not routes:
+        raise RuntimeError(f"route_eta returned no route (msg={data.get('msg')})")
+    route = routes[0]
+    coords = (route.get("geometry") or {}).get("coordinates") or []
+    path = [{"lat": c[1], "lng": c[0]} for c in coords]
+    if len(path) < 2:
+        raise RuntimeError("route_eta returned empty geometry")
     return {
         "distance_km": round(route.get("distance", 0) / 1000, 2) if route.get("distance") else None,
         "duration_min": round(route.get("duration", 0) / 60, 1) if route.get("duration") else None,
-        "geometry": route.get("geometry"),
-        "path": _to_path(route.get("geometry")),
+        "path": path,
     }
 
 

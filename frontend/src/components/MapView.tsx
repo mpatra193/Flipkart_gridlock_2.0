@@ -14,6 +14,12 @@ const RISK_FILL: Record<string, string> = {
   LOW: "#eab308",
 };
 
+const ROUTE_COLOR = "#00C853";
+
+function dotHtml(color: string, size = 13) {
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 5px ${color};cursor:pointer"></div>`;
+}
+
 function jammedList(p: Prediction): AffectedJunction[] {
   return p.affected_junctions
     .filter((a) => a.escape && (a.risk === "HIGH" || a.risk === "MEDIUM"))
@@ -56,6 +62,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [ready, setReady] = useState(false);
   const [picked, setPicked] = useState<AffectedJunction | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const overlaysRef = useRef<any[]>([]);
@@ -69,31 +76,50 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
     }
   };
 
+  function clearRoute() {
+    routeRef.current.forEach(clearOne);
+    routeRef.current = [];
+  }
+
   async function drawRoute(a: AffectedJunction) {
     setPicked(a);
+    setRouteError(null);
+    clearRoute();
     const map = mapRef.current;
     const M = window.mappls;
     if (!map || !M || !a.escape) return;
-    routeRef.current.forEach(clearOne);
-    routeRef.current = [];
     const e = a.escape;
-    let path: [number, number][] = [[a.lat, a.lon], [e.to_lat, e.to_lon]];
+
+    let path: { lat: number; lng: number }[];
     try {
       const res = await mapplsDirections(`${a.lat},${a.lon}`, `${e.to_lat},${e.to_lon}`);
-      if (res.path && res.path.length >= 2) path = res.path;
+      path = res.path;
     } catch {
-      /* fall back to straight line */
+      setRouteError("Mappls could not return a road route for this junction.");
+      return;
+    }
+    if (!path || path.length < 2) {
+      setRouteError("No drivable route returned for this junction.");
+      return;
     }
     try {
       routeRef.current.push(
-        new M.Polyline({ map, path, strokeColor: "#22c55e", strokeWeight: 6, strokeOpacity: 0.95, fitbounds: false })
+        new M.Polyline({
+          map,
+          path,
+          strokeColor: ROUTE_COLOR,
+          strokeOpacity: 0.95,
+          strokeWeight: 4,
+          fitbounds: true,
+        })
       );
+      routeRef.current.push(new M.Marker({ map, position: path[path.length - 1], html: dotHtml(ROUTE_COLOR, 15) }));
       routeRef.current.push(
-        new M.Circle({ map, center: { lat: a.lat, lng: a.lon }, radius: 170, strokeColor: "#22c55e", strokeWeight: 3, fillOpacity: 0 })
+        new M.Circle({ map, center: { lat: a.lat, lng: a.lon }, radius: 120, strokeColor: ROUTE_COLOR, strokeWeight: 2, fillOpacity: 0 })
       );
-      routeRef.current.push(new M.Marker({ map, position: { lat: e.to_lat, lng: e.to_lon } }));
     } catch (err) {
       console.error("[route]", err);
+      setRouteError("Map could not render the route.");
     }
   }
 
@@ -158,9 +184,9 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
 
     if (typeof map.resize === "function") map.resize();
 
-    routeRef.current.forEach(clearOne);
-    routeRef.current = [];
+    clearRoute();
     setPicked(null);
+    setRouteError(null);
     overlaysRef.current.forEach(clearOne);
     overlaysRef.current = [];
 
@@ -181,25 +207,17 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
         new window.mappls.Marker({ map, position: { lat: latitude, lng: longitude } })
       );
       prediction.affected_junctions.slice(0, 40).forEach((a) => {
-        overlaysRef.current.push(
-          new window.mappls.Circle({
-            map,
-            center: { lat: a.lat, lng: a.lon },
-            radius: 130,
-            fillColor: RISK_FILL[a.risk] || "#64748b",
-            fillOpacity: 0.9,
-            strokeWeight: 0,
-          })
-        );
-      });
-      jammedList(prediction).forEach((a) => {
+        const color = RISK_FILL[a.risk] || "#64748b";
         const mk = new window.mappls.Marker({
           map,
           position: { lat: a.lat, lng: a.lon },
-          popupHtml: `<b>${a.junction}</b><br/>tap to route traffic out`,
+          html: dotHtml(color),
+          popupHtml: `<b>${a.junction}</b><br/>${a.risk} · tap to route traffic out`,
         });
-        if (mk && typeof mk.addListener === "function") mk.addListener("click", () => drawRoute(a));
-        else if (mk && typeof mk.on === "function") mk.on("click", () => drawRoute(a));
+        if (a.escape) {
+          if (mk && typeof mk.addListener === "function") mk.addListener("click", () => drawRoute(a));
+          else if (mk && typeof mk.on === "function") mk.on("click", () => drawRoute(a));
+        }
         overlaysRef.current.push(mk);
       });
       map.setCenter?.({ lat: latitude, lng: longitude });
@@ -226,10 +244,11 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
         {picked?.escape && (
           <RouteCard
             picked={picked}
+            error={routeError}
             onClose={() => {
-              routeRef.current.forEach(clearOne);
-              routeRef.current = [];
+              clearRoute();
               setPicked(null);
+              setRouteError(null);
             }}
           />
         )}
@@ -271,7 +290,15 @@ function JamChips({
   );
 }
 
-function RouteCard({ picked, onClose }: { picked: AffectedJunction; onClose: () => void }) {
+function RouteCard({
+  picked,
+  error,
+  onClose,
+}: {
+  picked: AffectedJunction;
+  error: string | null;
+  onClose: () => void;
+}) {
   const e = picked.escape!;
   return (
     <div className="absolute bottom-2 left-2 z-20 glass p-3 w-72 text-xs">
@@ -282,12 +309,11 @@ function RouteCard({ picked, onClose }: { picked: AffectedJunction; onClose: () 
         </button>
       </div>
       <div className={`text-[10px] risk-${picked.risk}`}>{picked.risk} congestion</div>
+      {error && <div className="mt-2 text-rose-400">{error}</div>}
       <div className="mt-2 text-emerald-300 font-medium">
         ➜ Divert traffic {e.direction} toward {e.to_label}
       </div>
-      {e.avoid.length > 0 && (
-        <div className="mt-1 text-rose-300">Avoid: {e.avoid.join(" / ")}</div>
-      )}
+      {e.avoid.length > 0 && <div className="mt-1 text-rose-300">Avoid: {e.avoid.join(" / ")}</div>}
       <ul className="mt-2 space-y-0.5 text-slate-400 list-disc list-inside">
         {e.reason.map((r, i) => (
           <li key={i}>{r}</li>
@@ -360,9 +386,18 @@ function FallbackMap({ prediction }: { prediction: Prediction | null }) {
         ))}
         {pj && pt && (
           <g>
-            <line x1={pj[0]} y1={pj[1]} x2={pt[0]} y2={pt[1]} stroke="#22c55e" strokeWidth={3} strokeLinecap="round" />
-            <circle cx={pt[0]} cy={pt[1]} r={5} fill="#22c55e" />
-            <circle cx={pj[0]} cy={pj[1]} r={8} fill="none" stroke="#22c55e" strokeWidth={2} />
+            <line
+              x1={pj[0]}
+              y1={pj[1]}
+              x2={pt[0]}
+              y2={pt[1]}
+              stroke={ROUTE_COLOR}
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              strokeLinecap="round"
+            />
+            <circle cx={pt[0]} cy={pt[1]} r={5} fill={ROUTE_COLOR} />
+            <circle cx={pj[0]} cy={pj[1]} r={8} fill="none" stroke={ROUTE_COLOR} strokeWidth={2} />
           </g>
         )}
         {prediction.affected_junctions.map((a) => {
@@ -389,7 +424,13 @@ function FallbackMap({ prediction }: { prediction: Prediction | null }) {
         <circle cx={cx} cy={cy} r={6} fill="#ffffff" stroke="#ef4444" strokeWidth={2} />
       </svg>
       <JamChips list={jammedList(prediction)} picked={picked} onPick={setPicked} />
-      {picked?.escape && <RouteCard picked={picked} onClose={() => setPicked(null)} />}
+      {picked?.escape && (
+        <RouteCard
+          picked={picked}
+          error={"offline preview — straight-line direction only (no road geometry)"}
+          onClose={() => setPicked(null)}
+        />
+      )}
       <Badge text={`offline preview · ${prediction.impact_radius_km} km`} />
     </div>
   );

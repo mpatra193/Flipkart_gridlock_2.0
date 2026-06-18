@@ -33,7 +33,6 @@ export async function mapplsDirections(source: string, destination: string) {
   return data as {
     distance_km: number | null;
     duration_min: number | null;
-    geometry: unknown;
-    path: [number, number][];
+    path: { lat: number; lng: number }[];
   };
 }
