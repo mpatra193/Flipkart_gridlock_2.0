@@ -15,6 +15,9 @@ class EventInput(BaseModel):
     road_closure: bool = False
     priority_high: bool = True
     duration_override: float | None = Field(default=None, ge=0, le=168)
+    veh_type: str | None = None
+    event_type: str | None = None
+    police_station: str | None = None
 
     @model_validator(mode="after")
     def _need_location(self):

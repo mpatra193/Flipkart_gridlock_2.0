@@ -124,6 +124,13 @@ class AstraPipeline:
 
         confidence = round(model_conf * 100, 1) if model_conf is not None else similar["confidence"]["score"]
 
+        if cause in ("protest", "vip_movement", "procession"):
+            data_support = "low"
+        elif cause in ("water_logging", "tree_fall", "pot_holes"):
+            data_support = "medium"
+        else:
+            data_support = "high"
+
         return {
             "event": {
                 "event_cause": cause, "junction": junction, "corridor": corridor,
@@ -141,6 +148,7 @@ class AstraPipeline:
             "duration_source": duration_source,
             "impact_radius_km": impact_radius,
             "confidence": confidence,
+            "data_support": data_support,
             "similar_event_count": similar["match_count"],
             "affected_junctions": affected,
             "similar": similar,
