@@ -299,21 +299,39 @@ function JamChips({
 }) {
   if (!list.length) return null;
   return (
-    <div className="absolute top-2 left-2 right-24 z-20 flex items-center gap-1 overflow-x-auto pb-1">
-      <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 pr-1">Jammed</span>
-      {list.map((a) => (
-        <button
-          key={a.junction}
-          onClick={() => onPick(a)}
-          className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border transition ${
-            picked?.junction === a.junction
-              ? "bg-emerald-500/30 border-emerald-400 text-emerald-200"
-              : "bg-black/50 border-white/10 text-slate-300 hover:border-emerald-400/60"
-          }`}
+    <div className="absolute top-3 left-3 right-28 z-20">
+      <div className="glass shadow-xl shadow-black/40 flex items-center p-2 rounded-xl backdrop-blur-md bg-[#0a0e1a]/80 border-white/10">
+        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 rounded-lg mr-2">
+          <div className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300">Jammed</span>
+        </div>
+        
+        <div 
+          className="flex-1 flex items-center gap-2 overflow-x-auto px-1 py-0.5 [&::-webkit-scrollbar]:hidden" 
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {a.junction}
-        </button>
-      ))}
+          {list.map((a) => {
+            const isSelected = picked?.junction === a.junction;
+            return (
+              <button
+                key={a.junction}
+                onClick={() => onPick(a)}
+                className={`shrink-0 px-3 py-1.5 rounded-lg border transition-all duration-300 ease-out flex items-center gap-2 ${
+                  isSelected
+                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                    : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 hover:border-white/10"
+                }`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full ${a.risk === 'HIGH' ? 'bg-rose-500' : 'bg-orange-500'}`} />
+                <span className="text-xs font-medium whitespace-nowrap">{a.junction}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
