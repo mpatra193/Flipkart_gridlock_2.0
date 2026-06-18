@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { mapplsStatus, mapplsToken } from "../api";
-import type { Prediction } from "../types";
+import { mapplsDirections, mapplsStatus, mapplsToken } from "../api";
+import type { AffectedJunction, Prediction } from "../types";
 
 declare global {
   interface Window {
@@ -13,6 +13,13 @@ const RISK_FILL: Record<string, string> = {
   MEDIUM: "#f97316",
   LOW: "#eab308",
 };
+
+function jammedList(p: Prediction): AffectedJunction[] {
+  return p.affected_junctions
+    .filter((a) => a.escape && (a.risk === "HIGH" || a.risk === "MEDIUM"))
+    .sort((x, y) => y.congestion - x.congestion)
+    .slice(0, 14);
+}
 
 function loadSdk(): Promise<void> {
   if (window.mappls && window.mappls.Map) return Promise.resolve();
@@ -48,9 +55,47 @@ function waitFor(cond: () => boolean, tries = 60): Promise<void> {
 export default function MapView({ prediction }: { prediction: Prediction | null }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [ready, setReady] = useState(false);
+  const [picked, setPicked] = useState<AffectedJunction | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const overlaysRef = useRef<any[]>([]);
+  const routeRef = useRef<any[]>([]);
+
+  const clearOne = (o: any) => {
+    try {
+      o.remove ? o.remove() : mapRef.current?.removeLayer?.(o);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  async function drawRoute(a: AffectedJunction) {
+    setPicked(a);
+    const map = mapRef.current;
+    const M = window.mappls;
+    if (!map || !M || !a.escape) return;
+    routeRef.current.forEach(clearOne);
+    routeRef.current = [];
+    const e = a.escape;
+    let path: [number, number][] = [[a.lat, a.lon], [e.to_lat, e.to_lon]];
+    try {
+      const res = await mapplsDirections(`${a.lat},${a.lon}`, `${e.to_lat},${e.to_lon}`);
+      if (res.path && res.path.length >= 2) path = res.path;
+    } catch {
+      /* fall back to straight line */
+    }
+    try {
+      routeRef.current.push(
+        new M.Polyline({ map, path, strokeColor: "#22c55e", strokeWeight: 6, strokeOpacity: 0.95, fitbounds: false })
+      );
+      routeRef.current.push(
+        new M.Circle({ map, center: { lat: a.lat, lng: a.lon }, radius: 170, strokeColor: "#22c55e", strokeWeight: 3, fillOpacity: 0 })
+      );
+      routeRef.current.push(new M.Marker({ map, position: { lat: e.to_lat, lng: e.to_lon } }));
+    } catch (err) {
+      console.error("[route]", err);
+    }
+  }
 
   useEffect(() => {
     mapplsStatus()
@@ -82,7 +127,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
           zoomControl: true,
         });
         mapRef.current = map;
-        
+
         const triggerReady = () => {
           if (!cancelled) {
             setReady(true);
@@ -94,7 +139,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
 
         if (typeof map.on === "function") map.on("load", triggerReady);
         else triggerReady();
-        
+
         setTimeout(triggerReady, 1500);
       })
       .catch((e) => {
@@ -110,19 +155,15 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   useEffect(() => {
     if (!ready || !mapRef.current || !window.mappls || !prediction) return;
     const map = mapRef.current;
-    
-    if (typeof map.resize === "function") {
-      map.resize();
-    }
 
-    overlaysRef.current.forEach((o) => {
-      try {
-        o.remove ? o.remove() : map.removeLayer?.(o);
-      } catch {
-        /* ignore */
-      }
-    });
+    if (typeof map.resize === "function") map.resize();
+
+    routeRef.current.forEach(clearOne);
+    routeRef.current = [];
+    setPicked(null);
+    overlaysRef.current.forEach(clearOne);
     overlaysRef.current = [];
+
     const { latitude, longitude } = prediction.event;
     try {
       overlaysRef.current.push(
@@ -151,9 +192,19 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
           })
         );
       });
+      jammedList(prediction).forEach((a) => {
+        const mk = new window.mappls.Marker({
+          map,
+          position: { lat: a.lat, lng: a.lon },
+          popupHtml: `<b>${a.junction}</b><br/>tap to route traffic out`,
+        });
+        if (mk && typeof mk.addListener === "function") mk.addListener("click", () => drawRoute(a));
+        else if (mk && typeof mk.on === "function") mk.on("click", () => drawRoute(a));
+        overlaysRef.current.push(mk);
+      });
       map.setCenter?.({ lat: latitude, lng: longitude });
       map.setZoom?.(13);
-      
+
       setTimeout(() => {
         if (map && typeof map.resize === "function") map.resize();
       }, 200);
@@ -165,18 +216,88 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   if (configured === true) {
     return (
       <div className="glass h-full relative overflow-hidden" style={{ minHeight: 420 }}>
-        <div 
-          id="mappls-map-container" 
-          ref={containerRef} 
-          className="absolute inset-0" 
-          style={{ width: "100%", height: "100%" }} 
+        <div
+          id="mappls-map-container"
+          ref={containerRef}
+          className="absolute inset-0"
+          style={{ width: "100%", height: "100%" }}
         />
+        {prediction && <JamChips list={jammedList(prediction)} picked={picked} onPick={drawRoute} />}
+        {picked?.escape && (
+          <RouteCard
+            picked={picked}
+            onClose={() => {
+              routeRef.current.forEach(clearOne);
+              routeRef.current = [];
+              setPicked(null);
+            }}
+          />
+        )}
         <Badge text={ready ? "Mappls live" : "loading map…"} />
       </div>
     );
   }
 
   return <FallbackMap prediction={prediction} />;
+}
+
+function JamChips({
+  list,
+  picked,
+  onPick,
+}: {
+  list: AffectedJunction[];
+  picked: AffectedJunction | null;
+  onPick: (a: AffectedJunction) => void;
+}) {
+  if (!list.length) return null;
+  return (
+    <div className="absolute top-2 left-2 right-24 z-20 flex items-center gap-1 overflow-x-auto pb-1">
+      <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 pr-1">Jammed</span>
+      {list.map((a) => (
+        <button
+          key={a.junction}
+          onClick={() => onPick(a)}
+          className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border transition ${
+            picked?.junction === a.junction
+              ? "bg-emerald-500/30 border-emerald-400 text-emerald-200"
+              : "bg-black/50 border-white/10 text-slate-300 hover:border-emerald-400/60"
+          }`}
+        >
+          {a.junction}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RouteCard({ picked, onClose }: { picked: AffectedJunction; onClose: () => void }) {
+  const e = picked.escape!;
+  return (
+    <div className="absolute bottom-2 left-2 z-20 glass p-3 w-72 text-xs">
+      <div className="flex items-start justify-between">
+        <div className="font-semibold text-slate-100">{picked.junction}</div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 leading-none">
+          ✕
+        </button>
+      </div>
+      <div className={`text-[10px] risk-${picked.risk}`}>{picked.risk} congestion</div>
+      <div className="mt-2 text-emerald-300 font-medium">
+        ➜ Divert traffic {e.direction} toward {e.to_label}
+      </div>
+      {e.avoid.length > 0 && (
+        <div className="mt-1 text-rose-300">Avoid: {e.avoid.join(" / ")}</div>
+      )}
+      <ul className="mt-2 space-y-0.5 text-slate-400 list-disc list-inside">
+        {e.reason.map((r, i) => (
+          <li key={i}>{r}</li>
+        ))}
+      </ul>
+      <div className="mt-2 text-slate-300">
+        Confidence: <span className="text-emerald-300 font-semibold">{e.confidence}%</span>
+      </div>
+    </div>
+  );
 }
 
 function Badge({ text }: { text: string }) {
@@ -188,6 +309,12 @@ function Badge({ text }: { text: string }) {
 }
 
 function FallbackMap({ prediction }: { prediction: Prediction | null }) {
+  const [picked, setPicked] = useState<AffectedJunction | null>(null);
+
+  useEffect(() => {
+    setPicked(null);
+  }, [prediction]);
+
   if (!prediction) {
     return (
       <div className="glass h-full flex items-center justify-center text-slate-500 text-sm">
@@ -211,6 +338,10 @@ function FallbackMap({ prediction }: { prediction: Prediction | null }) {
     return [cx + dxKm * kmToPx, cy - dyKm * kmToPx];
   };
 
+  const pe = picked?.escape || null;
+  const pj = picked ? project(picked.lat, picked.lon) : null;
+  const pt = pe ? project(pe.to_lat, pe.to_lon) : null;
+
   return (
     <div className="glass h-full relative overflow-hidden">
       <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full">
@@ -227,18 +358,38 @@ function FallbackMap({ prediction }: { prediction: Prediction | null }) {
             strokeOpacity={0.3}
           />
         ))}
+        {pj && pt && (
+          <g>
+            <line x1={pj[0]} y1={pj[1]} x2={pt[0]} y2={pt[1]} stroke="#22c55e" strokeWidth={3} strokeLinecap="round" />
+            <circle cx={pt[0]} cy={pt[1]} r={5} fill="#22c55e" />
+            <circle cx={pj[0]} cy={pj[1]} r={8} fill="none" stroke="#22c55e" strokeWidth={2} />
+          </g>
+        )}
         {prediction.affected_junctions.map((a) => {
           const [x, y] = project(a.lat, a.lon);
+          const clickable = !!a.escape;
           return (
-            <circle key={a.junction} cx={x} cy={y} r={4} fill={RISK_FILL[a.risk] || "#64748b"} opacity={0.85}>
+            <circle
+              key={a.junction}
+              cx={x}
+              cy={y}
+              r={clickable ? 5 : 4}
+              fill={RISK_FILL[a.risk] || "#64748b"}
+              opacity={0.85}
+              style={{ cursor: clickable ? "pointer" : "default" }}
+              onClick={() => clickable && setPicked(a)}
+            >
               <title>
                 {a.junction} · {a.risk} · {(a.congestion * 100).toFixed(0)}%
+                {clickable ? " · click to route out" : ""}
               </title>
             </circle>
           );
         })}
         <circle cx={cx} cy={cy} r={6} fill="#ffffff" stroke="#ef4444" strokeWidth={2} />
       </svg>
+      <JamChips list={jammedList(prediction)} picked={picked} onPick={setPicked} />
+      {picked?.escape && <RouteCard picked={picked} onClose={() => setPicked(null)} />}
       <Badge text={`offline preview · ${prediction.impact_radius_km} km`} />
     </div>
   );

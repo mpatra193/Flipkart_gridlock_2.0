@@ -30,5 +30,10 @@ export async function mapplsToken(): Promise<string> {
 
 export async function mapplsDirections(source: string, destination: string) {
   const { data } = await api.post("/mappls/directions", { source, destination });
-  return data as { distance_km: number | null; duration_min: number | null; geometry: string | null };
+  return data as {
+    distance_km: number | null;
+    duration_min: number | null;
+    geometry: unknown;
+    path: [number, number][];
+  };
 }

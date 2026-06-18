@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import pickle
 from dataclasses import dataclass
 
@@ -10,12 +11,26 @@ from .engines import resource_planner
 from .engines.diversion import DiversionEngine
 from .engines.impact_radius import estimate_impact_radius, find_affected_junctions
 from .engines.similar_events import SimilarEventEngine
-from .engines.spillover import _dominant_corridor, affected_from_source
+from .engines.spillover import NON_CORRIDORS, _dominant_corridor, affected_from_source
+from .geo import haversine_km
 from .memory.lookup import RiskLookup
 from .models.duration_model import DurationModel
 from .scoring.esi import compute_esi
 
 RING_CONGESTION = {"HIGH": 0.8, "MEDIUM": 0.5, "LOW": 0.2}
+_COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
+
+
+def _bearing(lat1, lon1, lat2, lon2):
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lon2 - lon1)
+    x = math.sin(dl) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+
+def _compass(b):
+    return _COMPASS[int((b + 22.5) % 360 // 45)]
 
 
 @dataclass
@@ -68,6 +83,65 @@ class AstraPipeline:
             a["corridor"] = self.junction_corridor.get(a["junction"])
         return raw
 
+    def _escape_routes(self, src_lat, src_lon, blocked_corridor, affected, recommended, avoid_junctions):
+        if src_lat is None or src_lon is None:
+            return
+        candidates = []
+        for r in recommended:
+            pts = self.diversion.corridor_points.get(r["corridor"])
+            if pts is not None and len(pts):
+                candidates.append((r, pts))
+        blocked = blocked_corridor if blocked_corridor and blocked_corridor not in NON_CORRIDORS else None
+
+        for a in affected:
+            jlat, jlon = a.get("lat"), a.get("lon")
+            if jlat is None or jlon is None:
+                continue
+            out_b = _bearing(src_lat, src_lon, jlat, jlon)
+            src_dir = _compass((out_b + 180) % 360)
+            avoid = [j for j in avoid_junctions if j != a["junction"]][:2]
+            if blocked:
+                avoid = avoid + [blocked]
+
+            best = None
+            for r, pts in candidates:
+                d = haversine_km(jlat, jlon, pts[:, 0], pts[:, 1])
+                i = int(d.argmin())
+                plat, plon, dist = float(pts[i, 0]), float(pts[i, 1]), float(d[i])
+                if dist < 0.05:
+                    continue
+                vb = _bearing(jlat, jlon, plat, plon)
+                align = math.cos(math.radians((vb - out_b + 180) % 360 - 180))
+                score = 0.55 * max(0.0, align) + 0.35 * (r["confidence"] / 100.0) + 0.10 * max(0.0, 1 - dist / 6.0)
+                if best is None or score > best["score"]:
+                    best = {"score": score, "corridor": r["corridor"], "to_lat": plat,
+                            "to_lon": plon, "dist": dist, "vb": vb, "conf": r["confidence"],
+                            "reliability": r["reliability"]}
+
+            if best is None:
+                dlat = 1.5 / 111.0 * math.cos(math.radians(out_b))
+                dlon = 1.5 / (111.0 * math.cos(math.radians(jlat))) * math.sin(math.radians(out_b))
+                a["escape"] = {
+                    "to_lat": round(jlat + dlat, 6), "to_lon": round(jlon + dlon, 6),
+                    "to_label": "open road away from incident", "direction": _compass(out_b),
+                    "avoid": avoid, "confidence": 35.0,
+                    "reason": [f"incident source is to the {src_dir}",
+                               "no clear safe corridor nearby; push flow away from the jam"],
+                }
+                continue
+
+            reason = [f"incident source is to the {src_dir}"]
+            if blocked:
+                reason.append(f"{blocked} is blocked / saturated")
+            reason.append(f"{best['corridor']} carries lower historical risk")
+            reason.append(f"clear road ~{best['dist']:.1f} km {_compass(best['vb'])} from here")
+            conf = round(min(100.0, 0.6 * best["conf"] + 40.0 * max(0.0, best["score"])), 0)
+            a["escape"] = {
+                "to_lat": round(best["to_lat"], 6), "to_lon": round(best["to_lon"], 6),
+                "to_label": best["corridor"], "direction": _compass(best["vb"]),
+                "avoid": avoid, "confidence": conf, "reason": reason,
+            }
+
     def analyze(self, event):
         junction, lat, lon, corridor = self._resolve_location(event)
         hour = int(event["hour"])
@@ -118,6 +192,11 @@ class AstraPipeline:
 
         diversions = self.diversion.recommend(
             lat, lon, corridor, impact_radius, affected, similar_count=similar["match_count"]
+        )
+
+        self._escape_routes(
+            lat, lon, diversions["blocked_corridor"], affected,
+            diversions["recommended"], diversions["avoid_junctions"],
         )
 
         resources = resource_planner.plan(cause, road_closure, impact_radius, planning, affected)

@@ -13,6 +13,16 @@ export interface EventInput {
   duration_override?: number | null;
 }
 
+export interface EscapeRoute {
+  to_lat: number;
+  to_lon: number;
+  to_label: string;
+  direction: string;
+  avoid: string[];
+  confidence: number;
+  reason: string[];
+}
+
 export interface AffectedJunction {
   junction: string;
   lat: number;
@@ -21,6 +31,7 @@ export interface AffectedJunction {
   risk: RiskLevel;
   junction_risk?: number;
   corridor?: string | null;
+  escape?: EscapeRoute | null;
 }
 
 export interface PoliceBreakdown {
