@@ -42,7 +42,6 @@ export default function EventForm({
 }) {
   const [cause, setCause] = useState("procession");
   const [vehType, setVehType] = useState("unknown");
-  const [eventType, setEventType] = useState(deriveEventType("procession"));
   const [junction, setJunction] = useState("SilkBoardJunc");
   const [hour, setHour] = useState(18);
   const [weekday, setWeekday] = useState(4);
@@ -54,11 +53,7 @@ export default function EventForm({
   const selected = junctions.find((j) => j.junction === junction);
   const policeStation = selected?.police_station ?? null;
   const zone = selected?.zone ?? null;
-
-  function changeCause(c: string) {
-    setCause(c);
-    setEventType(deriveEventType(c));
-  }
+  const eventType = deriveEventType(cause);
 
   function submit() {
     onSubmit({
@@ -83,30 +78,30 @@ export default function EventForm({
       <div className="h-px" style={{ background: "var(--border-subtle)" }} />
 
       <div>
-        <FieldLabel>Cause</FieldLabel>
-        <select value={cause} onChange={(e) => changeCause(e.target.value)} className={selectClass} style={selectStyle}>
+        <FieldLabel>
+          Cause
+          <span
+            className={`ml-2 normal-case text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+              eventType === "planned" ? "text-cyan-400 bg-cyan-500/10" : "text-amber-400 bg-amber-500/10"
+            }`}
+          >
+            {eventType}
+          </span>
+        </FieldLabel>
+        <select value={cause} onChange={(e) => setCause(e.target.value)} className={selectClass} style={selectStyle}>
           {CAUSES.map((c) => (
             <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
           ))}
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <FieldLabel>Vehicle type</FieldLabel>
-          <select value={vehType} onChange={(e) => setVehType(e.target.value)} className={selectClass} style={selectStyle}>
-            {VEH_TYPES.map((v) => (
-              <option key={v} value={v}>{v.replace(/_/g, " ")}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <FieldLabel>Event type</FieldLabel>
-          <select value={eventType} onChange={(e) => setEventType(e.target.value)} className={selectClass} style={selectStyle}>
-            <option value="planned">planned</option>
-            <option value="unplanned">unplanned</option>
-          </select>
-        </div>
+      <div>
+        <FieldLabel>Vehicle type</FieldLabel>
+        <select value={vehType} onChange={(e) => setVehType(e.target.value)} className={selectClass} style={selectStyle}>
+          {VEH_TYPES.map((v) => (
+            <option key={v} value={v}>{v.replace(/_/g, " ")}</option>
+          ))}
+        </select>
       </div>
 
       <div>
