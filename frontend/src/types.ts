@@ -17,6 +17,21 @@ export interface EventInput {
   police_station?: string | null;
 }
 
+export interface FeedbackInput {
+  junction: string | null;
+  event_cause: string;
+  hour?: number | null;
+  weekday?: number | null;
+  predicted_p50?: number | null;
+  predicted_p90?: number | null;
+  esi?: number | null;
+  actual_hours: number;
+  resources_used?: number | null;
+  diversion_corridor?: string | null;
+  diversion_effective?: string | null;
+  notes?: string | null;
+}
+
 export interface EscapeRoute {
   to_lat: number;
   to_lon: number;
@@ -112,6 +127,8 @@ export interface Prediction {
   confidence: number;
   data_support?: string;
   location_confidence?: string;
+  calibration?: { factor: number; n: number; scope: string };
+  past_reports?: { count: number; avg_actual_hours: number | null };
   similar_event_count: number;
   affected_junctions: AffectedJunction[];
   similar: {

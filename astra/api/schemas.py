@@ -26,6 +26,21 @@ class EventInput(BaseModel):
         return self
 
 
+class FeedbackInput(BaseModel):
+    junction: str | None = None
+    event_cause: str
+    hour: int | None = None
+    weekday: int | None = None
+    predicted_p50: float | None = None
+    predicted_p90: float | None = None
+    esi: float | None = None
+    actual_hours: float = Field(ge=0, le=168)
+    resources_used: int | None = Field(default=None, ge=0)
+    diversion_corridor: str | None = None
+    diversion_effective: str | None = None
+    notes: str | None = None
+
+
 class DirectionsRequest(BaseModel):
     source: str
     destination: str

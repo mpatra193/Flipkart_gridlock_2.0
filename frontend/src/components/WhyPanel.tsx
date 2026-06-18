@@ -60,6 +60,12 @@ export default function WhyPanel({ p }: { p: Prediction }) {
         {p.data_support && <Row label="Historical support" value={cap(p.data_support)} />}
         <Row label="Similar past events" value={`${p.similar_event_count}`} />
         {p.location_confidence && <Row label="Location data" value={p.location_confidence} />}
+        {p.past_reports && p.past_reports.count > 0 && (
+          <Row
+            label="Logged outcomes"
+            value={`${p.past_reports.count}${p.past_reports.avg_actual_hours != null ? ` · avg ${p.past_reports.avg_actual_hours} h` : ""}`}
+          />
+        )}
       </div>
     </div>
   );

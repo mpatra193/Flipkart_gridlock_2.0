@@ -8,6 +8,7 @@ import ResourcePanel from "./components/ResourcePanel";
 import DiversionPanel from "./components/DiversionPanel";
 import SpilloverTimeline from "./components/SpilloverTimeline";
 import SimilarPanel from "./components/SimilarPanel";
+import FeedbackForm from "./components/FeedbackForm";
 import MapView from "./components/MapView";
 import OverviewView from "./components/Overview";
 
@@ -41,6 +42,7 @@ export default function App() {
   const [junctions, setJunctions] = useState<Junction[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
+  const [lastInput, setLastInput] = useState<EventInput | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dark, setDark] = useState(() => {
@@ -65,6 +67,7 @@ export default function App() {
   async function runPredict(input: EventInput) {
     setLoading(true);
     setError(null);
+    setLastInput(input);
     try {
       setPrediction(await predict(input));
     } catch (e: any) {
@@ -154,6 +157,7 @@ export default function App() {
                 <DiversionPanel d={prediction.diversions} />
                 <SpilloverTimeline p={prediction} />
                 <SimilarPanel s={prediction.similar} />
+                <FeedbackForm p={prediction} onSaved={() => { if (lastInput) runPredict(lastInput); }} />
               </>
             ) : (
               <div className="glass p-8 text-center">

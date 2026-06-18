@@ -42,6 +42,19 @@ export default function PredictionPanel({ p }: { p: Prediction }) {
         </div>
       </div>
 
+      {p.calibration && p.calibration.factor !== 1 && p.duration_source === "predicted" && (
+        <div
+          className="flex items-center gap-2 text-[11px] mb-3 px-3 py-2 rounded-xl"
+          style={{ background: "var(--bg-card-inner)", border: "1px solid var(--border-subtle)" }}
+        >
+          <span className="text-emerald-400 font-bold">↻</span>
+          <span className="t-text-3">
+            Duration calibrated <span className="font-semibold text-emerald-400">×{p.calibration.factor}</span> from{" "}
+            {p.calibration.n} past report{p.calibration.n === 1 ? "" : "s"}
+          </span>
+        </div>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-2">
         <Stat

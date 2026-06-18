@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .. import config
 from ..integrations import mappls
 from ..pipeline import AstraPipeline
-from .schemas import DirectionsRequest, EventInput, MatrixRequest
+from .schemas import DirectionsRequest, EventInput, FeedbackInput, MatrixRequest
 
 state: dict = {}
 
@@ -76,6 +76,18 @@ def predict(event: EventInput):
         return _clean(state["pipeline"].analyze(event.model_dump()))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/feedback")
+def add_feedback(fb: FeedbackInput):
+    store = state["pipeline"].feedback
+    store.add(fb.model_dump())
+    return {"saved": True, "summary": store.summary()}
+
+
+@app.get("/api/feedback/summary")
+def feedback_summary():
+    return state["pipeline"].feedback.summary()
 
 
 @app.get("/api/junctions")

@@ -1,11 +1,16 @@
 import axios from "axios";
-import type { EventInput, Junction, Overview, Prediction } from "./types";
+import type { EventInput, FeedbackInput, Junction, Overview, Prediction } from "./types";
 
 const api = axios.create({ baseURL: "/api", timeout: 20000 });
 
 export async function predict(input: EventInput): Promise<Prediction> {
   const { data } = await api.post<Prediction>("/predict", input);
   return data;
+}
+
+export async function postFeedback(fb: FeedbackInput) {
+  const { data } = await api.post("/feedback", fb);
+  return data as { saved: boolean; summary: { total: number; by_cause: Record<string, number> } };
 }
 
 export async function getJunctions(): Promise<Junction[]> {

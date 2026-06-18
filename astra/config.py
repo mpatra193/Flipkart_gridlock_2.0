@@ -44,6 +44,13 @@ DURATION_MODEL = ARTIFACTS_DIR / "duration_model.joblib"
 DURATION_METRICS = ARTIFACTS_DIR / "duration_metrics.json"
 DURATION_IMPORTANCE = ARTIFACTS_DIR / "duration_feature_importance.json"
 
+# Post-event learning (feedback calibration)
+FEEDBACK_PATH = DATA_DIR / "feedback.jsonl"
+CALIBRATION_K = 3.0             # shrinkage strength toward neutral factor 1.0
+CALIBRATION_MIN = 0.5           # clamp learned duration factor
+CALIBRATION_MAX = 2.0
+CALIBRATION_MIN_JC = 3          # reports needed before junction+cause overrides cause level
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Earth / geometry
 # ─────────────────────────────────────────────────────────────────────────────

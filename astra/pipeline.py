@@ -13,6 +13,7 @@ from .engines.impact_radius import estimate_impact_radius, find_affected_junctio
 from .engines.similar_events import SimilarEventEngine
 from .engines.spillover import NON_CORRIDORS, _dominant_corridor, affected_from_source
 from .geo import haversine_km
+from .memory.feedback import FeedbackStore
 from .memory.lookup import RiskLookup
 from .models.duration_model import DurationModel
 from .scoring.esi import compute_esi
@@ -42,6 +43,7 @@ class AstraPipeline:
     diversion: DiversionEngine
     registry: pd.DataFrame
     junction_corridor: dict
+    feedback: FeedbackStore
 
     @classmethod
     def load(cls):
@@ -57,6 +59,7 @@ class AstraPipeline:
             diversion=DiversionEngine.load(),
             registry=registry,
             junction_corridor=_dominant_corridor(events),
+            feedback=FeedbackStore.load(),
         )
 
     def _resolve_location(self, event):
@@ -177,6 +180,14 @@ class AstraPipeline:
             model_conf = q["confidence"]
             duration_source = "predicted"
 
+        calibration = self.feedback.duration_factor(cause, junction)
+        if duration_source == "predicted" and calibration["factor"] != 1.0:
+            f = calibration["factor"]
+            p10 = float(min(p10 * f, 168))
+            p50 = float(min(p50 * f, 168))
+            planning = float(min(planning * f, 168))
+        past_reports = self.feedback.past_reports(cause, junction)
+
         jc = self.risk.junction_component(junction=junction, zone=event.get("zone"), corridor=corridor)
         esi = compute_esi(cause, planning, road_closure, hour, is_weekend, jc)
 
@@ -194,6 +205,13 @@ class AstraPipeline:
         diversions = self.diversion.recommend(
             lat, lon, corridor, impact_radius, affected, similar_count=similar["match_count"]
         )
+        for d in diversions["recommended"]:
+            dr = self.feedback.diversion_rate(d["corridor"])
+            if dr:
+                d["effective_rate"] = dr["rate"]
+                d["effective_reports"] = dr["n"]
+                d["confidence"] = round(min(100.0, d["confidence"] * (0.7 + 0.6 * dr["rate"])), 1)
+        diversions["recommended"].sort(key=lambda r: r["confidence"], reverse=True)
 
         self._escape_routes(
             lat, lon, diversions["blocked_corridor"], affected,
@@ -238,6 +256,8 @@ class AstraPipeline:
             "confidence": confidence,
             "data_support": data_support,
             "location_confidence": location_confidence,
+            "calibration": calibration,
+            "past_reports": past_reports,
             "similar_event_count": similar["match_count"],
             "affected_junctions": affected,
             "similar": similar,
