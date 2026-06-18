@@ -13,6 +13,7 @@ const VEH_TYPES = [
 ];
 
 const PLANNED_CAUSES = new Set(["procession", "public_event", "vip_movement", "construction"]);
+const VEHICLE_CAUSES = new Set(["vehicle_breakdown", "accident"]);
 
 function deriveEventType(cause: string) {
   return PLANNED_CAUSES.has(cause) ? "planned" : "unplanned";
@@ -54,6 +55,7 @@ export default function EventForm({
   const policeStation = selected?.police_station ?? null;
   const zone = selected?.zone ?? null;
   const eventType = deriveEventType(cause);
+  const vehicleRelevant = VEHICLE_CAUSES.has(cause);
 
   function submit() {
     onSubmit({
@@ -65,7 +67,7 @@ export default function EventForm({
       road_closure: closure,
       priority_high: priority === "High",
       duration_override: override ? Number(override) : null,
-      veh_type: vehType,
+      veh_type: vehicleRelevant ? vehType : "unknown",
       event_type: eventType,
       police_station: policeStation,
     });
@@ -95,14 +97,16 @@ export default function EventForm({
         </select>
       </div>
 
-      <div>
-        <FieldLabel>Vehicle type</FieldLabel>
-        <select value={vehType} onChange={(e) => setVehType(e.target.value)} className={selectClass} style={selectStyle}>
-          {VEH_TYPES.map((v) => (
-            <option key={v} value={v}>{v.replace(/_/g, " ")}</option>
-          ))}
-        </select>
-      </div>
+      {vehicleRelevant && (
+        <div>
+          <FieldLabel>Vehicle type</FieldLabel>
+          <select value={vehType} onChange={(e) => setVehType(e.target.value)} className={selectClass} style={selectStyle}>
+            {VEH_TYPES.map((v) => (
+              <option key={v} value={v}>{v.replace(/_/g, " ")}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <FieldLabel>Junction</FieldLabel>

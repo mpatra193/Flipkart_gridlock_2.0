@@ -3,8 +3,10 @@ import { getJunctions, getOverview, predict } from "./api";
 import type { EventInput, Junction, Overview, Prediction } from "./types";
 import EventForm from "./components/EventForm";
 import PredictionPanel from "./components/PredictionPanel";
+import WhyPanel from "./components/WhyPanel";
 import ResourcePanel from "./components/ResourcePanel";
 import DiversionPanel from "./components/DiversionPanel";
+import SpilloverTimeline from "./components/SpilloverTimeline";
 import SimilarPanel from "./components/SimilarPanel";
 import MapView from "./components/MapView";
 import OverviewView from "./components/Overview";
@@ -147,8 +149,10 @@ export default function App() {
             {prediction ? (
               <>
                 <PredictionPanel p={prediction} />
+                <WhyPanel p={prediction} />
                 <ResourcePanel r={prediction.resources} />
                 <DiversionPanel d={prediction.diversions} />
+                <SpilloverTimeline p={prediction} />
                 <SimilarPanel s={prediction.similar} />
               </>
             ) : (

@@ -198,6 +198,7 @@ CORRIDOR_FACTOR_SAME = 0.5      # congestion flows freely along one road
 CORRIDOR_FACTOR_CROSS = 1.0     # must "turn a corner" to spread
 DECAY_KAPPA = 2.0               # exponential decay constant
 PROPAGATION_THRESHOLD = 0.10    # stop when congestion drops below 10%
+ETA_MIN_PER_COST = 8.0          # minutes of spread per unit of propagation cost
 
 # Junction risk score weights (frequency dominates)
 JUNCTION_RISK_WEIGHTS = {

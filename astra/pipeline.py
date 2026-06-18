@@ -81,6 +81,7 @@ class AstraPipeline:
         for a in raw:
             a["junction_risk"] = self.risk.junction_score(a["junction"])
             a["corridor"] = self.junction_corridor.get(a["junction"])
+            a["eta_min"] = round(max(-config.DECAY_KAPPA * math.log(max(a["congestion"], 1e-3)) * config.ETA_MIN_PER_COST, 0.0), 1)
         return raw
 
     def _escape_routes(self, src_lat, src_lon, blocked_corridor, affected, recommended, avoid_junctions):

@@ -36,6 +36,7 @@ export interface AffectedJunction {
   junction_risk?: number;
   corridor?: string | null;
   escape?: EscapeRoute | null;
+  eta_min?: number;
 }
 
 export interface PoliceBreakdown {
