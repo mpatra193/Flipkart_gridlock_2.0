@@ -16,8 +16,14 @@ const RISK_FILL: Record<string, string> = {
 
 const ROUTE_COLOR = "#00C853";
 
-function dotHtml(color: string, size = 13) {
-  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 5px ${color};cursor:pointer"></div>`;
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
 }
 
 function jammedList(p: Prediction): AffectedJunction[] {
@@ -67,6 +73,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   const mapRef = useRef<any>(null);
   const overlaysRef = useRef<any[]>([]);
   const routeRef = useRef<any[]>([]);
+  const affectedRef = useRef<AffectedJunction[]>([]);
 
   const clearOne = (o: any) => {
     try {
@@ -113,7 +120,9 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
           fitbounds: true,
         })
       );
-      routeRef.current.push(new M.Marker({ map, position: path[path.length - 1], html: dotHtml(ROUTE_COLOR, 15) }));
+      routeRef.current.push(
+        new M.Circle({ map, center: path[path.length - 1], radius: 140, fillColor: ROUTE_COLOR, fillOpacity: 0.9, strokeColor: "#ffffff", strokeWeight: 2 })
+      );
       routeRef.current.push(
         new M.Circle({ map, center: { lat: a.lat, lng: a.lon }, radius: 120, strokeColor: ROUTE_COLOR, strokeWeight: 2, fillOpacity: 0 })
       );
@@ -153,6 +162,24 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
           zoomControl: true,
         });
         mapRef.current = map;
+
+        if (typeof map.on === "function") {
+          map.on("click", (e: any) => {
+            const ll = e?.lngLat || e?.latlng || e?.latLng;
+            if (!ll || typeof ll.lat !== "number") return;
+            let best: AffectedJunction | null = null;
+            let bestD = Infinity;
+            for (const a of affectedRef.current) {
+              if (!a.escape) continue;
+              const d = haversineKm(ll.lat, ll.lng, a.lat, a.lon);
+              if (d < bestD) {
+                bestD = d;
+                best = a;
+              }
+            }
+            if (best && bestD <= 0.25) drawRoute(best);
+          });
+        }
 
         const triggerReady = () => {
           if (!cancelled) {
@@ -206,19 +233,20 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
       overlaysRef.current.push(
         new window.mappls.Marker({ map, position: { lat: latitude, lng: longitude } })
       );
-      prediction.affected_junctions.slice(0, 40).forEach((a) => {
-        const color = RISK_FILL[a.risk] || "#64748b";
-        const mk = new window.mappls.Marker({
-          map,
-          position: { lat: a.lat, lng: a.lon },
-          html: dotHtml(color),
-          popupHtml: `<b>${a.junction}</b><br/>${a.risk} · tap to route traffic out`,
-        });
-        if (a.escape) {
-          if (mk && typeof mk.addListener === "function") mk.addListener("click", () => drawRoute(a));
-          else if (mk && typeof mk.on === "function") mk.on("click", () => drawRoute(a));
-        }
-        overlaysRef.current.push(mk);
+      const shown = prediction.affected_junctions.slice(0, 40);
+      affectedRef.current = shown;
+      shown.forEach((a) => {
+        overlaysRef.current.push(
+          new window.mappls.Circle({
+            map,
+            center: { lat: a.lat, lng: a.lon },
+            radius: 130,
+            fillColor: RISK_FILL[a.risk] || "#64748b",
+            fillOpacity: 0.9,
+            strokeColor: "#ffffff",
+            strokeWeight: 1,
+          })
+        );
       });
       map.setCenter?.({ lat: latitude, lng: longitude });
       map.setZoom?.(13);
