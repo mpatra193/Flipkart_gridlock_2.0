@@ -101,24 +101,31 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
-          <nav
-            className="flex items-center gap-1 rounded-xl p-1"
-            style={{ background: 'var(--bg-card-inner)', border: '1px solid var(--border-subtle)' }}
-          >
-            {(["simulator", "compare", "overview"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-4 py-1.5 rounded-lg text-[13px] font-medium capitalize transition-all duration-200 ${
-                  tab === t
-                    ? "t-accent"
-                    : "t-text-muted"
-                }`}
-                style={tab === t ? { background: 'var(--accent-glow)' } : undefined}
-              >
-                {t}
-              </button>
-            ))}
+          <nav className="flex items-end gap-1">
+            {(["simulator", "compare", "overview"] as const).map((t) => {
+              const active = tab === t;
+              const labels = { simulator: "Simulator", compare: "ASTRA Impact", overview: "Overview" } as const;
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`px-4 rounded-t-lg text-[13px] font-semibold transition-all duration-200 ${active ? "t-accent py-2" : "t-text-muted py-1.5"}`}
+                  style={
+                    active
+                      ? {
+                          background: "var(--accent-glow)",
+                          borderTop: "1px solid var(--border-subtle)",
+                          borderLeft: "1px solid var(--border-subtle)",
+                          borderRight: "1px solid var(--border-subtle)",
+                          boxShadow: "0 -2px 8px rgba(0,0,0,0.06)",
+                        }
+                      : { background: "var(--bg-card-inner)" }
+                  }
+                >
+                  {labels[t]}
+                </button>
+              );
+            })}
           </nav>
           <ThemeToggle dark={dark} onToggle={() => setDark(!dark)} />
         </div>
