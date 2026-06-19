@@ -14,6 +14,7 @@ import OverviewView from "./components/Overview";
 import CompareView from "./components/CompareView";
 import InterventionView from "./components/InterventionView";
 import WhatIfView from "./components/WhatIfView";
+import EmergencyView from "./components/EmergencyView";
 
 function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
   return (
@@ -41,7 +42,7 @@ function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"simulator" | "compare" | "interventions" | "whatif" | "overview">("simulator");
+  const [tab, setTab] = useState<"simulator" | "compare" | "interventions" | "whatif" | "emergency" | "overview">("simulator");
   const [junctions, setJunctions] = useState<Junction[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
@@ -104,9 +105,9 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           <nav className="flex items-end gap-1">
-            {(["simulator", "compare", "interventions", "whatif", "overview"] as const).map((t) => {
+            {(["simulator", "compare", "interventions", "whatif", "emergency", "overview"] as const).map((t) => {
               const active = tab === t;
-              const labels = { simulator: "Simulator", compare: "ASTRA Impact", interventions: "Interventions", whatif: "What-If", overview: "Overview" } as const;
+              const labels = { simulator: "Simulator", compare: "ASTRA Impact", interventions: "Interventions", whatif: "What-If", emergency: "Emergency", overview: "Overview" } as const;
               return (
                 <button
                   key={t}
@@ -194,6 +195,11 @@ export default function App() {
       {tab === "whatif" && (
         <div className="flex-1 p-4 overflow-hidden">
           <WhatIfView prediction={prediction} junctions={junctions} />
+        </div>
+      )}
+      {tab === "emergency" && (
+        <div className="flex-1 p-4 overflow-hidden">
+          <EmergencyView prediction={prediction} junctions={junctions} />
         </div>
       )}
       {tab === "overview" && (
