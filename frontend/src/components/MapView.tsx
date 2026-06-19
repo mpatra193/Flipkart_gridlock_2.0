@@ -69,11 +69,18 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   const [ready, setReady] = useState(false);
   const [picked, setPicked] = useState<AffectedJunction | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [clock, setClock] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const overlaysRef = useRef<any[]>([]);
   const routeRef = useRef<any[]>([]);
+  const cascadeRef = useRef<Map<string, any>>(new Map());
   const affectedRef = useRef<AffectedJunction[]>([]);
+
+  const affected40 = prediction ? prediction.affected_junctions.slice(0, 40) : [];
+  const maxEta = Math.max(1, ...affected40.map((a) => a.eta_min ?? 0));
+  const litCount = affected40.filter((a) => (a.eta_min ?? 0) <= clock).length;
 
   const clearOne = (o: any) => {
     try {
@@ -86,6 +93,49 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   function clearRoute() {
     routeRef.current.forEach(clearOne);
     routeRef.current = [];
+  }
+
+  function clearCascade() {
+    cascadeRef.current.forEach(clearOne);
+    cascadeRef.current = new Map();
+  }
+
+  function renderCascade(t: number) {
+    const map = mapRef.current;
+    const M = window.mappls;
+    if (!map || !M) return;
+    for (const a of affectedRef.current) {
+      const has = cascadeRef.current.has(a.junction);
+      const should = (a.eta_min ?? 0) <= t;
+      if (should && !has) {
+        try {
+          const c = new M.Circle({
+            map,
+            center: { lat: a.lat, lng: a.lon },
+            radius: a.risk === "HIGH" ? 150 : 120,
+            fillColor: RISK_FILL[a.risk] || "#64748b",
+            fillOpacity: 0.85,
+            strokeColor: "#ffffff",
+            strokeWeight: 1,
+          });
+          cascadeRef.current.set(a.junction, c);
+        } catch {
+          /* ignore */
+        }
+      } else if (!should && has) {
+        clearOne(cascadeRef.current.get(a.junction));
+        cascadeRef.current.delete(a.junction);
+      }
+    }
+  }
+
+  function togglePlay() {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (clock >= maxEta) setClock(0);
+    setPlaying(true);
   }
 
   async function drawRoute(a: AffectedJunction) {
@@ -212,8 +262,11 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
     if (typeof map.resize === "function") map.resize();
 
     clearRoute();
+    clearCascade();
     setPicked(null);
     setRouteError(null);
+    setPlaying(false);
+    setClock(0);
     overlaysRef.current.forEach(clearOne);
     overlaysRef.current = [];
 
@@ -233,21 +286,8 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
       overlaysRef.current.push(
         new window.mappls.Marker({ map, position: { lat: latitude, lng: longitude } })
       );
-      const shown = prediction.affected_junctions.slice(0, 40);
-      affectedRef.current = shown;
-      shown.forEach((a) => {
-        overlaysRef.current.push(
-          new window.mappls.Circle({
-            map,
-            center: { lat: a.lat, lng: a.lon },
-            radius: 130,
-            fillColor: RISK_FILL[a.risk] || "#64748b",
-            fillOpacity: 0.9,
-            strokeColor: "#ffffff",
-            strokeWeight: 1,
-          })
-        );
-      });
+      affectedRef.current = prediction.affected_junctions.slice(0, 40);
+      renderCascade(0);
       map.setCenter?.({ lat: latitude, lng: longitude });
       map.setZoom?.(13);
 
@@ -258,6 +298,27 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
       console.error("[Mappls overlay]", e);
     }
   }, [prediction, ready]);
+
+  useEffect(() => {
+    renderCascade(clock);
+  }, [clock]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const max = Math.max(1, ...affectedRef.current.map((a) => a.eta_min ?? 0));
+    const step = Math.max(0.4, max / 45);
+    const id = setInterval(() => {
+      setClock((t) => {
+        const next = t + step;
+        if (next >= max) {
+          setPlaying(false);
+          return max;
+        }
+        return next;
+      });
+    }, 180);
+    return () => clearInterval(id);
+  }, [playing]);
 
   if (configured === true) {
     return (
@@ -279,6 +340,36 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
               setRouteError(null);
             }}
           />
+        )}
+        {prediction && affected40.length > 1 && (
+          <div
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-3 py-2 rounded-2xl backdrop-blur-xl"
+            style={{ background: "var(--overlay-bg)", border: "1px solid var(--border-subtle)", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}
+          >
+            <button
+              onClick={togglePlay}
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 t-accent"
+              style={{ background: "var(--accent-glow)" }}
+              title={playing ? "Pause" : "Play cascade"}
+            >
+              {playing ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+              )}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={maxEta}
+              step={0.5}
+              value={clock}
+              onChange={(e) => { setPlaying(false); setClock(Number(e.target.value)); }}
+              style={{ width: 150 }}
+            />
+            <div className="text-[11px] font-bold t-text-2 w-16 text-right shrink-0">T+{Math.round(clock)} min</div>
+            <div className="text-[10px] t-text-muted w-14 shrink-0">{litCount} active</div>
+          </div>
         )}
         <Badge text={ready ? "Mappls live" : "loading map…"} />
       </div>
