@@ -12,6 +12,8 @@ import FeedbackForm from "./components/FeedbackForm";
 import MapView from "./components/MapView";
 import OverviewView from "./components/Overview";
 import CompareView from "./components/CompareView";
+import InterventionView from "./components/InterventionView";
+import WhatIfView from "./components/WhatIfView";
 
 function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
   return (
@@ -39,7 +41,7 @@ function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"simulator" | "compare" | "overview">("simulator");
+  const [tab, setTab] = useState<"simulator" | "compare" | "interventions" | "whatif" | "overview">("simulator");
   const [junctions, setJunctions] = useState<Junction[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
@@ -102,9 +104,9 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           <nav className="flex items-end gap-1">
-            {(["simulator", "compare", "overview"] as const).map((t) => {
+            {(["simulator", "compare", "interventions", "whatif", "overview"] as const).map((t) => {
               const active = tab === t;
-              const labels = { simulator: "Simulator", compare: "ASTRA Impact", overview: "Overview" } as const;
+              const labels = { simulator: "Simulator", compare: "ASTRA Impact", interventions: "Interventions", whatif: "What-If", overview: "Overview" } as const;
               return (
                 <button
                   key={t}
@@ -182,6 +184,16 @@ export default function App() {
       {tab === "compare" && (
         <div className="flex-1 p-4 overflow-hidden">
           <CompareView prediction={prediction} />
+        </div>
+      )}
+      {tab === "interventions" && (
+        <div className="flex-1 p-4 overflow-hidden">
+          <InterventionView prediction={prediction} />
+        </div>
+      )}
+      {tab === "whatif" && (
+        <div className="flex-1 p-4 overflow-hidden">
+          <WhatIfView prediction={prediction} />
         </div>
       )}
       {tab === "overview" && (
