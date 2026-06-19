@@ -58,9 +58,11 @@ class DiversionEngine:
         for corridor, pts in self.corridor_points.items():
             if corridor == blocked:
                 continue
-            dmin = float(haversine_km(lat, lon, pts[:, 0], pts[:, 1]).min())
+            d = haversine_km(lat, lon, pts[:, 0], pts[:, 1])
+            i = int(d.argmin())
+            dmin = float(d[i])
             if dmin <= reach:
-                out.append((corridor, dmin))
+                out.append((corridor, dmin, float(pts[i, 0]), float(pts[i, 1])))
         return out
 
     def recommend(self, lat, lon, blocked_corridor, impact_radius,
@@ -79,7 +81,7 @@ class DiversionEngine:
 
         reach = config.DIVERSION_CANDIDATE_RADIUS_MULT * impact_radius
         scored = []
-        for corridor, dmin in self._candidate_corridors(lat, lon, impact_radius, blocked_corridor):
+        for corridor, dmin, plat, plon in self._candidate_corridors(lat, lon, impact_radius, blocked_corridor):
             load = _load_factor(active_load.get(corridor, 0))
             reliability = float(self.reliability.get(corridor, 0.5))
             capacity = float(self.capacity.get(corridor, 0.0))
@@ -101,6 +103,8 @@ class DiversionEngine:
                 {
                     "corridor": corridor,
                     "distance_km": round(dmin, 2),
+                    "to_lat": round(plat, 6),
+                    "to_lon": round(plon, 6),
                     "score": round(corridor_score, 3),
                     "confidence": round(confidence * 100, 1),
                     "active_incidents": int(active_load.get(corridor, 0)),

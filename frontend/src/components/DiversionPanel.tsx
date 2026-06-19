@@ -1,19 +1,24 @@
-import type { Prediction } from "../types";
+import { useState } from "react";
+import type { DiversionCorridor, Prediction } from "../types";
+import DiversionDetail from "./DiversionDetail";
 
-export default function DiversionPanel({ d }: { d: Prediction["diversions"] }) {
+export default function DiversionPanel({ d, origin }: { d: Prediction["diversions"]; origin: { lat: number; lng: number } }) {
+  const [selected, setSelected] = useState<DiversionCorridor | null>(null);
   return (
     <div className="glass p-5">
       <div className="text-sm font-semibold t-text mb-3">Diversions</div>
 
-      <div className="text-[11px] t-text-muted mb-3">
+      <div className="text-[11px] t-text-muted mb-1">
         Blocked corridor: <span className="t-text-2 font-medium">{d.blocked_corridor || "—"}</span>
       </div>
+      <div className="text-[10px] t-text-muted mb-3 italic">tap a corridor for the reroute map & impact</div>
 
       <div className="space-y-2">
         {d.recommended.map((c, i) => (
           <div
             key={c.corridor}
-            className={`rounded-xl px-3 py-2.5 transition-all duration-200 ${
+            onClick={() => setSelected(c)}
+            className={`rounded-xl px-3 py-2.5 transition-all duration-200 cursor-pointer hover:brightness-125 ${
               i === 0 ? 'border-emerald-500/20' : ''
             }`}
             style={{
@@ -51,6 +56,7 @@ export default function DiversionPanel({ d }: { d: Prediction["diversions"] }) {
           </div>
         </div>
       )}
+      {selected && <DiversionDetail diversion={selected} origin={origin} onClose={() => setSelected(null)} />}
     </div>
   );
 }

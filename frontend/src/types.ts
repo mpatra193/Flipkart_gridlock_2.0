@@ -82,6 +82,8 @@ export interface Resources {
 export interface DiversionCorridor {
   corridor: string;
   distance_km: number;
+  to_lat?: number;
+  to_lon?: number;
   score: number;
   confidence: number;
   active_incidents: number;
@@ -89,6 +91,8 @@ export interface DiversionCorridor {
   capacity: number;
   spillover_safety: number;
   proximity: number;
+  effective_rate?: number;
+  effective_reports?: number;
 }
 
 export interface SimilarMatch {

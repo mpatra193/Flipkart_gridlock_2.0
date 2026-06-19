@@ -162,7 +162,7 @@ export default function App() {
                 <PredictionPanel p={prediction} />
                 <WhyPanel p={prediction} />
                 <ResourcePanel r={prediction.resources} />
-                <DiversionPanel d={prediction.diversions} />
+                <DiversionPanel d={prediction.diversions} origin={{ lat: prediction.event.latitude, lng: prediction.event.longitude }} />
                 <SpilloverTimeline p={prediction} />
                 <SimilarPanel s={prediction.similar} />
                 <FeedbackForm p={prediction} onSaved={() => { if (lastInput) runPredict(lastInput); }} />
