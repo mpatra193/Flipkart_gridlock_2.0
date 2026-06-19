@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { mapplsDirections, mapplsStatus } from "../api";
 import { loadSdk, waitFor } from "../mapsdk";
+import { nearestRegion, pickHospital } from "../hospitals";
 import type { Junction, Prediction } from "../types";
 
 const UNITS = ["Ambulance", "Fire", "Police"];
 
 type LL = { lat: number; lng: number };
+type Hospital = { pos: LL; name: string; region: string; officers: number; barricades: number };
 
 function signalsAlong(path: LL[], junctions: Junction[]) {
   if (!path || path.length < 2) return [] as string[];
@@ -26,7 +28,17 @@ function signalsAlong(path: LL[], junctions: Junction[]) {
   return out;
 }
 
-function EmergencyMap({ path, from, to, jammed }: { path: LL[]; from: LL | null; to: LL | null; jammed: { lat: number; lon: number }[] }) {
+function hospitalHtml(h: Hospital) {
+  return `<div style="transform:translate(-50%,-100%);text-align:center;pointer-events:none">
+    <div style="display:inline-block;background:#ffffff;color:#0f172a;border-radius:8px;padding:3px 8px;box-shadow:0 2px 10px rgba(0,0,0,0.35);font-size:11px;font-weight:700;white-space:nowrap">
+      <span style="color:#ef4444">✚</span> ${h.name}
+      <div style="font-size:10px;color:#0ea5e9;font-weight:700;margin-top:1px">👮 ${h.officers}&nbsp;&nbsp;🚧 ${h.barricades}</div>
+    </div>
+    <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #ffffff;margin:0 auto"></div>
+  </div>`;
+}
+
+function EmergencyMap({ path, from, to, hospital, jammed }: { path: LL[]; from: LL | null; to: LL | null; hospital: Hospital | null; jammed: { lat: number; lon: number }[] }) {
   const mapRef = useRef<any>(null);
   const overlays = useRef<any[]>([]);
   const [ready, setReady] = useState(false);
@@ -80,10 +92,11 @@ function EmergencyMap({ path, from, to, jammed }: { path: LL[]; from: LL | null;
       }
       if (from) overlays.current.push(new M.Circle({ map, center: from, radius: 150, fillColor: "#22d3ee", fillOpacity: 0.9, strokeColor: "#ffffff", strokeWeight: 2 }));
       if (to) overlays.current.push(new M.Circle({ map, center: to, radius: 160, fillColor: "#ef4444", fillOpacity: 0.9, strokeColor: "#ffffff", strokeWeight: 2 }));
+      if (hospital) overlays.current.push(new M.Marker({ map, position: hospital.pos, html: hospitalHtml(hospital) }));
     } catch {
       /* ignore */
     }
-  }, [path, from, to, jammed, ready]);
+  }, [path, from, to, hospital, jammed, ready]);
 
   return <div id="astra-emergency-map" className="absolute inset-0" style={{ width: "100%", height: "100%" }} />;
 }
@@ -98,23 +111,26 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
 }
 
 export default function EmergencyView({ prediction, junctions }: { prediction: Prediction | null; junctions: Junction[] }) {
-  const incidentJunction = prediction?.event.junction || "";
   const [unit, setUnit] = useState("Ambulance");
   const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
   const [route, setRoute] = useState<{ path: LL[]; distance_km: number | null; duration_min: number | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
+
+  const incidentJunction = prediction?.event.junction || "";
+  const incidentLat = prediction?.event.latitude ?? 12.95;
+  const incidentLng = prediction?.event.longitude ?? 77.6;
 
   useEffect(() => {
     mapplsStatus().then((s) => setConfigured(s.configured)).catch(() => setConfigured(false));
   }, []);
 
   useEffect(() => {
-    const others = junctions.filter((j) => j.junction !== incidentJunction);
-    setTo(incidentJunction || junctions[0]?.junction || "");
-    setFrom(others[0]?.junction || "");
+    const far = [...junctions]
+      .filter((j) => j.lat != null && j.lon != null && j.junction !== incidentJunction)
+      .sort((a, b) => Math.hypot(b.lat - incidentLat, b.lon - incidentLng) - Math.hypot(a.lat - incidentLat, a.lon - incidentLng));
+    setFrom(far[0]?.junction || "");
     setRoute(null);
   }, [incidentJunction, junctions]);
 
@@ -123,10 +139,10 @@ export default function EmergencyView({ prediction, junctions }: { prediction: P
     return j && j.lat != null && j.lon != null ? { lat: j.lat, lng: j.lon } : null;
   };
   const fromC = coordOf(from);
-  const toC = coordOf(to);
+  const toC: LL = { lat: incidentLat, lng: incidentLng };
 
   useEffect(() => {
-    if (!fromC || !toC) return;
+    if (!fromC) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -141,7 +157,7 @@ export default function EmergencyView({ prediction, junctions }: { prediction: P
     return () => {
       cancelled = true;
     };
-  }, [from, to]);
+  }, [from, incidentLat, incidentLng]);
 
   if (!prediction) {
     return (
@@ -150,6 +166,18 @@ export default function EmergencyView({ prediction, junctions }: { prediction: P
       </div>
     );
   }
+
+  const region = nearestRegion(incidentLat, incidentLng);
+  const hospitalName = pickHospital(region, incidentJunction || `${incidentLat}`);
+  const officers = Math.max(2, Math.round(prediction.resources.police.recommended * 0.25));
+  const barricades = Math.max(2, Math.round(prediction.resources.barricades.total * 0.3));
+  const hospital: Hospital = {
+    pos: { lat: incidentLat + 0.009, lng: incidentLng + 0.009 },
+    name: hospitalName,
+    region,
+    officers,
+    barricades,
+  };
 
   const jammed = prediction.affected_junctions.filter((a) => a.risk === "HIGH" || a.risk === "MEDIUM");
   const signals = route ? signalsAlong(route.path, junctions) : [];
@@ -193,13 +221,14 @@ export default function EmergencyView({ prediction, junctions }: { prediction: P
           </select>
         </div>
 
-        <div>
-          <div className="text-[10px] uppercase tracking-wider t-text-muted font-medium mb-1.5">To (destination)</div>
-          <select value={to} onChange={(e) => setTo(e.target.value)} className={selectClass} style={selectStyle}>
-            {junctions.map((j) => (
-              <option key={j.junction} value={j.junction}>{j.junction}{j.junction === incidentJunction ? " (incident)" : ""}</option>
-            ))}
-          </select>
+        <div className="rounded-xl p-3" style={{ background: "rgba(14,165,233,0.08)", border: "1px solid rgba(14,165,233,0.2)" }}>
+          <div className="text-[10px] uppercase tracking-wider t-text-muted font-medium mb-1">Nearest hospital · dispatch</div>
+          <div className="text-[12px] font-bold t-text leading-tight">✚ {hospitalName}</div>
+          <div className="text-[10px] t-text-muted mb-2">{region} region · staging point</div>
+          <div className="flex gap-3 text-[12px] font-semibold">
+            <span className="text-cyan-400">👮 {officers} officers</span>
+            <span className="text-amber-400">🚧 {barricades} barricades</span>
+          </div>
         </div>
 
         {signals.length > 0 && (
@@ -212,7 +241,7 @@ export default function EmergencyView({ prediction, junctions }: { prediction: P
             </div>
           </div>
         )}
-        <div className="text-[10px] t-text-muted italic pt-1">{unit} routed traffic-aware; priority clears signals along the path.</div>
+        <div className="text-[10px] t-text-muted italic pt-1">{unit} routed traffic-aware; priority clears signals along the path. Hospital location approximate.</div>
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col">
@@ -220,7 +249,7 @@ export default function EmergencyView({ prediction, junctions }: { prediction: P
           {configured === false ? (
             <div className="absolute inset-0 flex items-center justify-center t-text-muted text-sm">Mappls not configured.</div>
           ) : (
-            <EmergencyMap path={route?.path || []} from={fromC} to={toC} jammed={jammed} />
+            <EmergencyMap path={route?.path || []} from={fromC} to={toC} hospital={hospital} jammed={jammed} />
           )}
           {loading && <div className="absolute top-2 left-2 text-[10px] px-2 py-1 rounded z-10" style={{ background: "rgba(0,0,0,0.55)", color: "#e2e8f0" }}>routing…</div>}
           {error && <div className="absolute bottom-2 left-2 text-[10px] text-rose-400 px-2 py-1 rounded z-10" style={{ background: "rgba(0,0,0,0.55)" }}>{error}</div>}

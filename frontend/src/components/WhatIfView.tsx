@@ -211,13 +211,24 @@ export default function WhatIfView({ prediction, junctions }: { prediction: Pred
   const projCong = Math.min(100, Math.round(prediction.esi * combined));
   const projDur = Math.round(baseDur * combined * 10) / 10;
   const projVeh = Math.round(affectedCount * 220 + 600);
+  const ecoLoss = projVeh * 30 + severeCount * 8000;
+  const verdict = projCong >= 80 ? "CRITICAL" : projCong >= 60 ? "HIGH" : projCong >= 40 ? "MEDIUM" : "LOW";
+  const rs = (x: number) => (x >= 100000 ? `₹${(x / 100000).toFixed(1)}L` : `₹${Math.max(1, Math.round(x / 1000))}k`);
 
   return (
     <div className="glass p-5 h-full flex gap-5">
       <div className="w-60 shrink-0 space-y-3 overflow-y-auto custom-scroll pr-1">
-        <div>
-          <div className="text-sm font-bold t-text">What-if simulator</div>
-          <div className="text-[11px] t-text-muted">Adjust conditions, watch the impact change</div>
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-sm font-bold t-text">What-if simulator</div>
+            <div className="text-[11px] t-text-muted">Adjust conditions, watch the impact change</div>
+          </div>
+          <button
+            onClick={() => { setSev("Medium"); setCap("Normal"); setWeather("Clear"); setTod("Peak"); setVol("Normal"); setLanes("2 lanes"); setDay("Weekday"); setResponse("Normal"); }}
+            className="text-[10px] t-text-muted underline shrink-0 mt-0.5"
+          >
+            reset
+          </button>
         </div>
         <Seg label="Incident severity" value={sev} options={["Low", "Medium", "High"]} onChange={setSev} />
         <Seg label="Lanes blocked" value={lanes} options={["1 lane", "2 lanes", "3+ lanes"]} onChange={setLanes} />
@@ -231,6 +242,13 @@ export default function WhatIfView({ prediction, junctions }: { prediction: Pred
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <div className="flex items-center gap-2">
+            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg risk-${verdict}`} style={{ background: "var(--bg-card-inner)" }}>{verdict} gridlock</span>
+            <span className="text-[11px] t-text-muted">{affectedCount} junctions · {severeCount} severe</span>
+          </div>
+          <div className="text-[11px] t-text-muted">Est. loss <span className="text-rose-400 font-bold">{rs(ecoLoss)}</span></div>
+        </div>
         <div className="relative rounded-xl overflow-hidden flex-1" style={{ border: "1px solid var(--border-subtle)", minHeight: 300 }}>
           {configured ? (
             <ScenarioMap cLat={cLat} cLon={cLon} points={points} impactKm={projImpact} />
