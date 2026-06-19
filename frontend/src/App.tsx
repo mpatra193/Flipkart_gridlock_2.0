@@ -11,6 +11,7 @@ import SimilarPanel from "./components/SimilarPanel";
 import FeedbackForm from "./components/FeedbackForm";
 import MapView from "./components/MapView";
 import OverviewView from "./components/Overview";
+import CompareView from "./components/CompareView";
 
 function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
   return (
@@ -38,7 +39,7 @@ function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"simulator" | "overview">("simulator");
+  const [tab, setTab] = useState<"simulator" | "compare" | "overview">("simulator");
   const [junctions, setJunctions] = useState<Junction[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
@@ -104,7 +105,7 @@ export default function App() {
             className="flex items-center gap-1 rounded-xl p-1"
             style={{ background: 'var(--bg-card-inner)', border: '1px solid var(--border-subtle)' }}
           >
-            {(["simulator", "overview"] as const).map((t) => (
+            {(["simulator", "compare", "overview"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -132,7 +133,7 @@ export default function App() {
       )}
 
       {/* ── Content ── */}
-      {tab === "simulator" ? (
+      {tab === "simulator" && (
         <div className="flex-1 flex gap-4 p-4 overflow-hidden">
           {/* Left sidebar */}
           <div className="w-72 shrink-0 overflow-y-auto pb-4 custom-scroll">
@@ -170,7 +171,13 @@ export default function App() {
             )}
           </div>
         </div>
-      ) : (
+      )}
+      {tab === "compare" && (
+        <div className="flex-1 p-4 overflow-hidden">
+          <CompareView prediction={prediction} />
+        </div>
+      )}
+      {tab === "overview" && (
         <div className="flex-1 overflow-y-auto p-4 custom-scroll">
           <OverviewView overview={overview} />
         </div>
