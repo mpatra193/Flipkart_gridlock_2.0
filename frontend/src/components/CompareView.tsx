@@ -87,8 +87,9 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
 
     if (mode === "with") {
       const jammed = prediction.affected_junctions
-        .filter((a) => a.escape && (a.risk === "HIGH" || a.risk === "MEDIUM"))
-        .slice(0, 5);
+        .filter((a) => a.escape && (a.risk === "HIGH" || a.risk === "MEDIUM") && (a.eta_min ?? 0) > 0.5)
+        .sort((x, y) => (y.congestion ?? 0) - (x.congestion ?? 0))
+        .slice(0, 2);
       jammed.forEach(async (a) => {
         try {
           const res = await mapplsDirections(`${a.lat},${a.lon}`, `${a.escape!.to_lat},${a.escape!.to_lon}`);
@@ -146,7 +147,7 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
     if (mode === "with") {
       for (const a of aff) {
         const path = routes[a.junction];
-        const reached = path && reachedSince(a, clock) >= 0;
+        const reached = path && clock > 0.5 && reachedSince(a, clock) >= 0;
         const has = lines.current.has(a.junction);
         if (reached && !has) {
           try {
