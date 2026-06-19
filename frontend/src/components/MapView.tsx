@@ -15,6 +15,8 @@ const RISK_FILL: Record<string, string> = {
 };
 
 const ROUTE_COLOR = "#00C853";
+const RAMP_MIN = 6;
+const LEVEL_COLOR = ["#eab308", "#f97316", "#ef4444"];
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
@@ -96,8 +98,17 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   }
 
   function clearCascade() {
-    cascadeRef.current.forEach(clearOne);
+    cascadeRef.current.forEach((v) => clearOne(v.circle));
     cascadeRef.current = new Map();
+  }
+
+  function levelAt(a: AffectedJunction, t: number) {
+    const since = t - (a.eta_min ?? 0);
+    if (since < 0) return -1;
+    const intensity = (a.congestion ?? 0.5) * Math.min(1, since / RAMP_MIN);
+    if (intensity >= 0.6) return 2;
+    if (intensity >= 0.3) return 1;
+    return 0;
   }
 
   function renderCascade(t: number) {
@@ -105,26 +116,30 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
     const M = window.mappls;
     if (!map || !M) return;
     for (const a of affectedRef.current) {
-      const has = cascadeRef.current.has(a.junction);
-      const should = (a.eta_min ?? 0) <= t;
-      if (should && !has) {
-        try {
-          const c = new M.Circle({
-            map,
-            center: { lat: a.lat, lng: a.lon },
-            radius: a.risk === "HIGH" ? 150 : 120,
-            fillColor: RISK_FILL[a.risk] || "#64748b",
-            fillOpacity: 0.85,
-            strokeColor: "#ffffff",
-            strokeWeight: 1,
-          });
-          cascadeRef.current.set(a.junction, c);
-        } catch {
-          /* ignore */
+      const lvl = levelAt(a, t);
+      const cur = cascadeRef.current.get(a.junction);
+      if (lvl < 0) {
+        if (cur) {
+          clearOne(cur.circle);
+          cascadeRef.current.delete(a.junction);
         }
-      } else if (!should && has) {
-        clearOne(cascadeRef.current.get(a.junction));
-        cascadeRef.current.delete(a.junction);
+        continue;
+      }
+      if (cur && cur.level === lvl) continue;
+      if (cur) clearOne(cur.circle);
+      try {
+        const circle = new M.Circle({
+          map,
+          center: { lat: a.lat, lng: a.lon },
+          radius: lvl === 2 ? 150 : lvl === 1 ? 130 : 115,
+          fillColor: LEVEL_COLOR[lvl],
+          fillOpacity: 0.85,
+          strokeColor: "#ffffff",
+          strokeWeight: 1,
+        });
+        cascadeRef.current.set(a.junction, { circle, level: lvl });
+      } catch {
+        /* ignore */
       }
     }
   }
@@ -134,7 +149,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
       setPlaying(false);
       return;
     }
-    if (clock >= maxEta) setClock(0);
+    setClock(0);
     setPlaying(true);
   }
 
@@ -305,8 +320,8 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
 
   useEffect(() => {
     if (!playing) return;
-    const max = Math.max(1, ...affectedRef.current.map((a) => a.eta_min ?? 0));
-    const step = Math.max(0.4, max / 45);
+    const max = Math.max(1, ...affectedRef.current.map((a) => a.eta_min ?? 0)) + RAMP_MIN;
+    const step = Math.max(0.4, max / 50);
     const id = setInterval(() => {
       setClock((t) => {
         const next = t + step;
@@ -316,7 +331,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
         }
         return next;
       });
-    }, 180);
+    }, 170);
     return () => clearInterval(id);
   }, [playing]);
 
@@ -348,20 +363,25 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
           >
             <button
               onClick={togglePlay}
-              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 t-accent"
+              className="shrink-0 flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold t-accent"
               style={{ background: "var(--accent-glow)" }}
-              title={playing ? "Pause" : "Play cascade"}
             >
               {playing ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+                <>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+                  Pause
+                </>
               ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                <>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                  {clock > 0 ? "Replay" : "Start"}
+                </>
               )}
             </button>
             <input
               type="range"
               min={0}
-              max={maxEta}
+              max={maxEta + RAMP_MIN}
               step={0.5}
               value={clock}
               onChange={(e) => { setPlaying(false); setClock(Number(e.target.value)); }}
