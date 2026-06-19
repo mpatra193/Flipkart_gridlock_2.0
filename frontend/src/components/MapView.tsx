@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { mapplsDirections, mapplsStatus, mapplsToken } from "../api";
-import type { AffectedJunction, DiversionCorridor, Prediction } from "../types";
+import type { AffectedJunction, Prediction } from "../types";
 
 declare global {
   interface Window {
@@ -66,7 +66,7 @@ function waitFor(cond: () => boolean, tries = 60): Promise<void> {
   });
 }
 
-export default function MapView({ prediction, deployed, hoverDiversion }: { prediction: Prediction | null; deployed?: boolean; hoverDiversion?: DiversionCorridor | null }) {
+export default function MapView({ prediction }: { prediction: Prediction | null }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [ready, setReady] = useState(false);
   const [picked, setPicked] = useState<AffectedJunction | null>(null);
@@ -79,9 +79,6 @@ export default function MapView({ prediction, deployed, hoverDiversion }: { pred
   const routeRef = useRef<any[]>([]);
   const cascadeRef = useRef<Map<string, any>>(new Map());
   const affectedRef = useRef<AffectedJunction[]>([]);
-  const deployRef = useRef<any[]>([]);
-  const hoverRef = useRef<any[]>([]);
-  const hoverCacheRef = useRef<Map<string, { lat: number; lng: number }[]>>(new Map());
 
   const affected40 = prediction ? prediction.affected_junctions.slice(0, 40) : [];
   const maxEta = Math.max(1, ...affected40.map((a) => a.eta_min ?? 0));
@@ -339,64 +336,6 @@ export default function MapView({ prediction, deployed, hoverDiversion }: { pred
     }, 170);
     return () => clearInterval(id);
   }, [playing]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const M = window.mappls;
-    if (!ready || !map || !M || !prediction) return;
-    deployRef.current.forEach(clearOne);
-    deployRef.current = [];
-    if (!deployed) return;
-    const coords = new Map(prediction.affected_junctions.map((a) => [a.junction, { lat: a.lat, lng: a.lon }]));
-    for (const d of prediction.resources.deployment_plan) {
-      const c = coords.get(d.junction);
-      if (!c) continue;
-      try {
-        deployRef.current.push(
-          new M.Circle({ map, center: c, radius: 160 + d.officers * 25, strokeColor: "#3b82f6", strokeWeight: 3, fillColor: "#3b82f6", fillOpacity: 0.12 })
-        );
-      } catch {
-        /* ignore */
-      }
-    }
-  }, [deployed, ready, prediction]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const M = window.mappls;
-    if (!ready || !map || !M) return;
-    hoverRef.current.forEach(clearOne);
-    hoverRef.current = [];
-    if (!hoverDiversion || hoverDiversion.to_lat == null || hoverDiversion.to_lon == null || !prediction) return;
-    let cancelled = false;
-    const origin = { lat: prediction.event.latitude, lng: prediction.event.longitude };
-    const dest = { lat: hoverDiversion.to_lat, lng: hoverDiversion.to_lon };
-    const draw = (path: { lat: number; lng: number }[]) => {
-      if (cancelled) return;
-      try {
-        hoverRef.current.push(new M.Polyline({ map, path, strokeColor: "#3b82f6", strokeOpacity: 0.9, strokeWeight: 5, fitbounds: false }));
-        hoverRef.current.push(new M.Circle({ map, center: dest, radius: 130, fillColor: "#3b82f6", fillOpacity: 0.9, strokeColor: "#ffffff", strokeWeight: 2 }));
-      } catch {
-        /* ignore */
-      }
-    };
-    const cached = hoverCacheRef.current.get(hoverDiversion.corridor);
-    if (cached) {
-      draw(cached);
-    } else {
-      mapplsDirections(`${origin.lat},${origin.lng}`, `${dest.lat},${dest.lng}`)
-        .then((res) => {
-          if (res.path && res.path.length >= 2) {
-            hoverCacheRef.current.set(hoverDiversion.corridor, res.path);
-            draw(res.path);
-          }
-        })
-        .catch(() => {});
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [hoverDiversion, ready, prediction]);
 
   if (configured === true) {
     return (
