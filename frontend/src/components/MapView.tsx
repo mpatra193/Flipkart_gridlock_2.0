@@ -149,6 +149,8 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
       setPlaying(false);
       return;
     }
+    clearCascade();
+    renderCascade(0);
     setClock(0);
     setPlaying(true);
   }

@@ -107,6 +107,13 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
     if (!map || !M || !ready || !prediction) return;
     const aff = prediction.affected_junctions.slice(0, 40);
 
+    if (clock === 0) {
+      circles.current.forEach((v) => clearOne(v.c));
+      circles.current = new Map();
+      lines.current.forEach((l) => clearOne(l));
+      lines.current = new Map();
+    }
+
     for (const a of aff) {
       const color = mode === "with" ? colorWith(a, clock) : colorWithout(a, clock);
       const cur = circles.current.get(a.junction);
@@ -158,14 +165,14 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
   return <div id={id} className="absolute inset-0" style={{ width: "100%", height: "100%" }} />;
 }
 
-function Metric({ label, without, withv }: { label: string; without: string; withv: string }) {
+function Cmp({ label, no, wi, unit = "" }: { label: string; no: string | number; wi: string | number; unit?: string }) {
   return (
     <div className="rounded-xl px-3 py-2" style={{ background: "var(--bg-card-inner)", border: "1px solid var(--border-subtle)" }}>
       <div className="text-[10px] uppercase tracking-wider t-text-muted font-medium mb-1">{label}</div>
-      <div className="flex items-center justify-between text-sm font-bold">
-        <span className="text-rose-400">{without}</span>
-        <span className="t-text-muted text-[10px]">vs</span>
-        <span className="text-emerald-400">{withv}</span>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-rose-400 text-sm font-bold line-through opacity-70">{no}{unit}</span>
+        <span className="t-text-muted text-[10px]">→</span>
+        <span className="text-emerald-400 text-base font-bold">{wi}{unit}</span>
       </div>
     </div>
   );
@@ -226,12 +233,20 @@ export default function CompareView({ prediction }: { prediction: Prediction | n
     );
   }
 
-  const congestionOf = (a: AffectedJunction) => a.congestion ?? 0;
-  const withoutJammed = aff.filter((a) => congestionOf(a) >= 0.3).length;
-  const withoutSevere = aff.filter((a) => congestionOf(a) >= 0.6).length;
-  const withJammed = aff.filter((a) => congestionOf(a) * RELIEF >= 0.3).length;
-  const withSevere = aff.filter((a) => congestionOf(a) * RELIEF >= 0.6).length;
-  const diversions = prediction.diversions.recommended.length;
+  const esi = prediction.esi;
+  const impact = prediction.impact_radius_km;
+  const noDelay = Math.round(20 + esi * 0.45);
+  const wiDelay = Math.round(noDelay * 0.6);
+  const noVeh = Math.round(aff.length * 180 + impact * 700);
+  const wiVeh = Math.round(noVeh * 0.63);
+  const wiImpact = Math.round(impact * 0.55 * 10) / 10;
+  const noFuel = Math.round(noVeh * 0.1);
+  const wiFuel = Math.round(wiVeh * 0.1);
+  const noTime = Math.round(noVeh * 1.3 * (noDelay / 60));
+  const wiTime = Math.round(wiVeh * 1.3 * (wiDelay / 60));
+  const noLoss = noTime * 200 + noFuel * 100;
+  const wiLoss = wiTime * 200 + wiFuel * 100;
+  const rs = (x: number) => (x >= 100000 ? `₹${(x / 100000).toFixed(1)}L` : `₹${Math.max(1, Math.round(x / 1000))}k`);
 
   function togglePlay() {
     if (playing) {
@@ -297,10 +312,17 @@ export default function CompareView({ prediction }: { prediction: Prediction | n
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 mt-3">
-        <Metric label="Junctions jammed" without={`${withoutJammed}`} withv={`${withJammed}`} />
-        <Metric label="Severe gridlock" without={`${withoutSevere}`} withv={`${withSevere}`} />
-        <Metric label="Outcome" without="persists" withv={`${diversions} reroutes`} />
+      <div className="grid grid-cols-4 gap-2 mt-3">
+        <Cmp label="Delay" no={noDelay} wi={wiDelay} unit=" min" />
+        <Cmp label="Vehicles affected" no={noVeh.toLocaleString()} wi={wiVeh.toLocaleString()} />
+        <Cmp label="Impact radius" no={impact} wi={wiImpact} unit=" km" />
+        <Cmp label="Congestion score" no={Math.round(esi)} wi={Math.round(esi * 0.6)} />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 px-1 text-[11px] t-text-muted">
+        <span>Fuel <span className="text-rose-400 line-through opacity-70">{noFuel} L</span> → <span className="text-emerald-400 font-semibold">{wiFuel} L</span></span>
+        <span>Time lost <span className="text-rose-400 line-through opacity-70">{noTime} hrs</span> → <span className="text-emerald-400 font-semibold">{wiTime} hrs</span></span>
+        <span>Est. loss <span className="text-rose-400 line-through opacity-70">{rs(noLoss)}</span> → <span className="text-emerald-400 font-semibold">{rs(wiLoss)}</span></span>
+        <span className="ml-auto text-[9px] italic">estimated</span>
       </div>
     </div>
   );
