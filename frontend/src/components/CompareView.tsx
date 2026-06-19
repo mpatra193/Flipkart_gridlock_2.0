@@ -23,6 +23,7 @@ function colorWithout(a: AffectedJunction, t: number): string | null {
 function colorWith(a: AffectedJunction, t: number): string | null {
   const since = reachedSince(a, t);
   if (since < 0) return null;
+  if ((a.eta_min ?? 0) <= 0.5) return colorWithout(a, t);
   const up = Math.min(1, since / RAMP);
   const down = since > RAMP ? Math.max(0, 1 - (since - RAMP) / RECOVERY) : 1;
   const intensity = (a.congestion ?? 0.5) * RELIEF * up * down;
