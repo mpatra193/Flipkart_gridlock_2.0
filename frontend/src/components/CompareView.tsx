@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { mapplsDirections, mapplsStatus } from "../api";
+import { loadSdk, waitFor } from "../mapsdk";
 import type { AffectedJunction, Prediction } from "../types";
 
 const RAMP = 6;
@@ -30,81 +32,130 @@ function colorWith(a: AffectedJunction, t: number): string | null {
   return "#eab308";
 }
 
-function ComparePanel({
-  prediction,
-  clock,
-  mode,
-  label,
-  caption,
-}: {
-  prediction: Prediction;
-  clock: number;
-  mode: "without" | "with";
-  label: string;
-  caption: string;
-}) {
-  const W = 400;
-  const H = 320;
-  const cx = W / 2;
-  const cy = H / 2;
-  const ringPx = 132;
-  const cLat = prediction.event.latitude;
-  const cLon = prediction.event.longitude;
-  const cosLat = Math.cos((cLat * Math.PI) / 180);
+function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: Prediction; clock: number; mode: "without" | "with" }) {
+  const mapRef = useRef<any>(null);
+  const circles = useRef<Map<string, { c: any; color: string }>>(new Map());
+  const lines = useRef<Map<string, any>>(new Map());
+  const [ready, setReady] = useState(false);
+  const [routes, setRoutes] = useState<Record<string, { lat: number; lng: number }[]>>({});
 
-  const aff = prediction.affected_junctions.slice(0, 40);
-  let maxKm = 0.6;
-  for (const a of aff) {
-    const dx = (a.lon - cLon) * 111 * cosLat;
-    const dy = (a.lat - cLat) * 111;
-    maxKm = Math.max(maxKm, Math.hypot(dx, dy));
-  }
-  const kmToPx = ringPx / maxKm;
-  const project = (lat: number, lon: number): [number, number] => {
-    const dx = (lon - cLon) * 111 * cosLat;
-    const dy = (lat - cLat) * 111;
-    return [cx + dx * kmToPx, cy - dy * kmToPx];
+  const clearOne = (o: any) => {
+    try {
+      o.remove ? o.remove() : mapRef.current?.removeLayer?.(o);
+    } catch {
+      /* ignore */
+    }
   };
 
-  const accent = mode === "with" ? "#22c55e" : "#ef4444";
+  useEffect(() => {
+    let cancelled = false;
+    loadSdk()
+      .then(() => waitFor(() => !!((window as any).mappls?.Map) && !!document.getElementById(id)))
+      .then(() => {
+        if (cancelled || mapRef.current) return;
+        const M = (window as any).mappls;
+        const map = new M.Map(id, { center: { lat: 12.95, lng: 77.6 }, zoom: 12, zoomControl: false });
+        mapRef.current = map;
+        const r = () => {
+          if (!cancelled) {
+            setReady(true);
+            setTimeout(() => map.resize?.(), 120);
+          }
+        };
+        if (typeof map.on === "function") map.on("load", r);
+        else r();
+        setTimeout(r, 1500);
+      })
+      .catch((e) => console.error("[compare map]", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
-  return (
-    <div className="flex-1 min-w-0 flex flex-col">
-      <div className="flex items-center justify-between px-1 mb-1.5">
-        <div className="text-xs font-bold" style={{ color: accent }}>{label}</div>
-        <div className="text-[10px] t-text-muted">{caption}</div>
-      </div>
-      <div className="relative rounded-xl overflow-hidden flex-1" style={{ border: "1px solid var(--border-subtle)" }}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full">
-          <rect width={W} height={H} fill="#0b1220" />
-          {[1, 0.66, 0.33].map((f, i) => (
-            <circle key={i} cx={cx} cy={cy} r={ringPx * f} fill="none" stroke="#1e293b" strokeWidth={1} />
-          ))}
+  useEffect(() => {
+    if (!ready || !prediction) return;
+    const map = mapRef.current;
+    circles.current.forEach((v) => clearOne(v.c));
+    circles.current = new Map();
+    lines.current.forEach((l) => clearOne(l));
+    lines.current = new Map();
+    setRoutes({});
+    map.setCenter?.({ lat: prediction.event.latitude, lng: prediction.event.longitude });
+    map.setZoom?.(12.5);
+    setTimeout(() => map.resize?.(), 150);
 
-          {mode === "with" &&
-            aff.map((a) => {
-              if (!a.escape || reachedSince(a, clock) < 0) return null;
-              if (a.risk !== "HIGH" && a.risk !== "MEDIUM") return null;
-              const [x1, y1] = project(a.lat, a.lon);
-              const [x2, y2] = project(a.escape.to_lat, a.escape.to_lon);
-              return (
-                <line key={`d-${a.junction}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#22c55e" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />
-              );
-            })}
+    if (mode === "with") {
+      const jammed = prediction.affected_junctions
+        .filter((a) => a.escape && (a.risk === "HIGH" || a.risk === "MEDIUM"))
+        .slice(0, 5);
+      jammed.forEach(async (a) => {
+        try {
+          const res = await mapplsDirections(`${a.lat},${a.lon}`, `${a.escape!.to_lat},${a.escape!.to_lon}`);
+          if (res.path && res.path.length >= 2) {
+            setRoutes((prev) => ({ ...prev, [a.junction]: res.path }));
+          }
+        } catch {
+          /* skip */
+        }
+      });
+    }
+  }, [ready, prediction, mode]);
 
-          {aff.map((a) => {
-            const color = mode === "with" ? colorWith(a, clock) : colorWithout(a, clock);
-            if (!color) return null;
-            const [x, y] = project(a.lat, a.lon);
-            const r = color === "#ef4444" ? 6 : color === "#f97316" ? 5 : 4;
-            return <circle key={a.junction} cx={x} cy={y} r={r} fill={color} opacity={0.9} />;
-          })}
+  useEffect(() => {
+    const map = mapRef.current;
+    const M = (window as any).mappls;
+    if (!map || !M || !ready || !prediction) return;
+    const aff = prediction.affected_junctions.slice(0, 40);
 
-          <circle cx={cx} cy={cy} r={7} fill="#ffffff" stroke="#ef4444" strokeWidth={2} />
-        </svg>
-      </div>
-    </div>
-  );
+    for (const a of aff) {
+      const color = mode === "with" ? colorWith(a, clock) : colorWithout(a, clock);
+      const cur = circles.current.get(a.junction);
+      if (!color) {
+        if (cur) {
+          clearOne(cur.c);
+          circles.current.delete(a.junction);
+        }
+        continue;
+      }
+      if (cur && cur.color === color) continue;
+      if (cur) clearOne(cur.c);
+      try {
+        const c = new M.Circle({
+          map,
+          center: { lat: a.lat, lng: a.lon },
+          radius: color === "#ef4444" ? 150 : color === "#f97316" ? 130 : 115,
+          fillColor: color,
+          fillOpacity: 0.85,
+          strokeColor: "#ffffff",
+          strokeWeight: 1,
+        });
+        circles.current.set(a.junction, { c, color });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (mode === "with") {
+      for (const a of aff) {
+        const path = routes[a.junction];
+        const reached = path && reachedSince(a, clock) >= 0;
+        const has = lines.current.has(a.junction);
+        if (reached && !has) {
+          try {
+            const ln = new M.Polyline({ map, path, strokeColor: "#22c55e", strokeOpacity: 0.9, strokeWeight: 3, fitbounds: false });
+            lines.current.set(a.junction, ln);
+          } catch {
+            /* ignore */
+          }
+        } else if (!reached && has) {
+          clearOne(lines.current.get(a.junction));
+          lines.current.delete(a.junction);
+        }
+      }
+    }
+  }, [clock, ready, prediction, mode, routes]);
+
+  return <div id={id} className="absolute inset-0" style={{ width: "100%", height: "100%" }} />;
 }
 
 function Metric({ label, without, withv }: { label: string; without: string; withv: string }) {
@@ -120,14 +171,32 @@ function Metric({ label, without, withv }: { label: string; without: string; wit
   );
 }
 
+function Side({ label, caption, accent, children }: { label: string; caption: string; accent: string; children: React.ReactNode }) {
+  return (
+    <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex items-center justify-between px-1 mb-1.5">
+        <div className="text-xs font-bold" style={{ color: accent }}>{label}</div>
+        <div className="text-[10px] t-text-muted">{caption}</div>
+      </div>
+      <div className="relative rounded-xl overflow-hidden flex-1" style={{ border: "1px solid var(--border-subtle)", minHeight: 320 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function CompareView({ prediction }: { prediction: Prediction | null }) {
   const [clock, setClock] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const affRef = useRef<AffectedJunction[]>([]);
+  const [configured, setConfigured] = useState<boolean | null>(null);
 
-  affRef.current = prediction ? prediction.affected_junctions.slice(0, 40) : [];
-  const maxEta = Math.max(1, ...affRef.current.map((a) => a.eta_min ?? 0));
+  const aff = prediction ? prediction.affected_junctions.slice(0, 40) : [];
+  const maxEta = Math.max(1, ...aff.map((a) => a.eta_min ?? 0));
   const timelineMax = maxEta + RAMP + RECOVERY;
+
+  useEffect(() => {
+    mapplsStatus().then((s) => setConfigured(s.configured)).catch(() => setConfigured(false));
+  }, []);
 
   useEffect(() => {
     setClock(0);
@@ -157,7 +226,6 @@ export default function CompareView({ prediction }: { prediction: Prediction | n
     );
   }
 
-  const aff = affRef.current;
   const congestionOf = (a: AffectedJunction) => a.congestion ?? 0;
   const withoutJammed = aff.filter((a) => congestionOf(a) >= 0.3).length;
   const withoutSevere = aff.filter((a) => congestionOf(a) >= 0.6).length;
@@ -166,7 +234,10 @@ export default function CompareView({ prediction }: { prediction: Prediction | n
   const diversions = prediction.diversions.recommended.length;
 
   function togglePlay() {
-    if (playing) { setPlaying(false); return; }
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
     setClock(0);
     setPlaying(true);
   }
@@ -211,10 +282,20 @@ export default function CompareView({ prediction }: { prediction: Prediction | n
         </div>
       </div>
 
-      <div className="flex gap-4 flex-1 min-h-0">
-        <ComparePanel prediction={prediction} clock={clock} mode="without" label="Without ASTRA" caption="no diversion — jam spreads & holds" />
-        <ComparePanel prediction={prediction} clock={clock} mode="with" label="With ASTRA" caption="diversions active — contained & clearing" />
-      </div>
+      {configured === false ? (
+        <div className="flex-1 flex items-center justify-center t-text-muted text-sm">
+          Mappls is not configured — add credentials to .env to see the comparison maps.
+        </div>
+      ) : (
+        <div className="flex gap-4 flex-1 min-h-0">
+          <Side label="Without ASTRA" caption="no diversion — jam spreads & holds" accent="#ef4444">
+            <CompareMap id="astra-cmp-left" prediction={prediction} clock={clock} mode="without" />
+          </Side>
+          <Side label="With ASTRA" caption="diversions active — contained & clearing" accent="#22c55e">
+            <CompareMap id="astra-cmp-right" prediction={prediction} clock={clock} mode="with" />
+          </Side>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-2 mt-3">
         <Metric label="Junctions jammed" without={`${withoutJammed}`} withv={`${withJammed}`} />
