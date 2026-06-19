@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getJunctions, getOverview, predict } from "./api";
-import type { EventInput, Junction, Overview, Prediction } from "./types";
+import type { DiversionCorridor, EventInput, Junction, Overview, Prediction } from "./types";
 import EventForm from "./components/EventForm";
 import PredictionPanel from "./components/PredictionPanel";
 import WhyPanel from "./components/WhyPanel";
@@ -46,6 +46,8 @@ export default function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [lastInput, setLastInput] = useState<EventInput | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const [hoverDiv, setHoverDiv] = useState<DiversionCorridor | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dark, setDark] = useState(() => {
@@ -66,6 +68,11 @@ export default function App() {
       document.documentElement.classList.remove("dark");
     }
   }, [dark]);
+
+  useEffect(() => {
+    setDeployed(false);
+    setHoverDiv(null);
+  }, [prediction]);
 
   async function runPredict(input: EventInput) {
     setLoading(true);
@@ -154,7 +161,7 @@ export default function App() {
             className="flex-1 min-w-0 relative rounded-2xl overflow-hidden shadow-2xl"
             style={{ border: '1px solid var(--border-subtle)' }}
           >
-            <MapView prediction={prediction} />
+            <MapView prediction={prediction} deployed={deployed} hoverDiversion={hoverDiv} />
           </div>
 
           {/* Right sidebar */}
@@ -163,8 +170,8 @@ export default function App() {
               <>
                 <PredictionPanel p={prediction} />
                 <WhyPanel p={prediction} />
-                <ResourcePanel r={prediction.resources} />
-                <DiversionPanel d={prediction.diversions} origin={{ lat: prediction.event.latitude, lng: prediction.event.longitude }} />
+                <ResourcePanel r={prediction.resources} deployed={deployed} onToggleDeploy={() => setDeployed((v) => !v)} />
+                <DiversionPanel d={prediction.diversions} origin={{ lat: prediction.event.latitude, lng: prediction.event.longitude }} onHover={setHoverDiv} />
                 <SpilloverTimeline p={prediction} />
                 <SimilarPanel s={prediction.similar} />
                 <FeedbackForm p={prediction} onSaved={() => { if (lastInput) runPredict(lastInput); }} />

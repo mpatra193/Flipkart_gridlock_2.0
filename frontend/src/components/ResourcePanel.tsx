@@ -21,7 +21,7 @@ const IconPatrol = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export default function ResourcePanel({ r }: { r: Resources }) {
+export default function ResourcePanel({ r, deployed, onToggleDeploy }: { r: Resources; deployed?: boolean; onToggleDeploy?: () => void }) {
   const items = [
     { icon: <IconOfficer className="w-5 h-5 mx-auto mb-1 text-cyan-400 opacity-80" />, label: "Officers", value: r.police.recommended, color: "text-cyan-400" },
     { icon: <IconBarrier className="w-5 h-5 mx-auto mb-1 text-amber-400 opacity-80" />, label: "Barricades", value: r.barricades.total, color: "text-amber-400" },
@@ -30,7 +30,23 @@ export default function ResourcePanel({ r }: { r: Resources }) {
 
   return (
     <div className="glass p-5">
-      <div className="text-sm font-semibold t-text mb-3">Resource Deployment</div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-semibold t-text">Resource Deployment</div>
+        {onToggleDeploy && (
+          <button
+            onClick={onToggleDeploy}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+            style={
+              deployed
+                ? { background: "rgba(59,130,246,0.15)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.3)" }
+                : { background: "var(--btn-primary-bg)", color: "var(--btn-primary-text)" }
+            }
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /></svg>
+            {deployed ? "Deployed · recall" : "Deploy resources"}
+          </button>
+        )}
+      </div>
 
       <div className="grid grid-cols-3 gap-2">
         {items.map((it) => (

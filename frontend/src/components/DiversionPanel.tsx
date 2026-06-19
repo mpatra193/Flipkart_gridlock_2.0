@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { DiversionCorridor, Prediction } from "../types";
 import DiversionDetail from "./DiversionDetail";
 
-export default function DiversionPanel({ d, origin }: { d: Prediction["diversions"]; origin: { lat: number; lng: number } }) {
+export default function DiversionPanel({ d, origin, onHover }: { d: Prediction["diversions"]; origin: { lat: number; lng: number }; onHover?: (c: DiversionCorridor | null) => void }) {
   const [selected, setSelected] = useState<DiversionCorridor | null>(null);
   return (
     <div className="glass p-5">
@@ -18,6 +18,8 @@ export default function DiversionPanel({ d, origin }: { d: Prediction["diversion
           <div
             key={c.corridor}
             onClick={() => setSelected(c)}
+            onMouseEnter={() => onHover?.(c)}
+            onMouseLeave={() => onHover?.(null)}
             className={`rounded-xl px-3 py-2.5 transition-all duration-200 cursor-pointer hover:brightness-125 ${
               i === 0 ? 'border-emerald-500/20' : ''
             }`}
