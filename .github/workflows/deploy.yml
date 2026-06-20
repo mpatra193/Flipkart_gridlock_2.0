@@ -13,11 +13,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            bash /home/ubuntu/deploy.sh
+      - name: Setup SSH and Deploy
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY_B64: ${{ secrets.EC2_SSH_KEY_B64 }}
+        run: |
+          # Decode the base64 key into a proper file
+          echo "$EC2_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+
+          # Add host to known_hosts to avoid interactive prompt
+          ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+
+          # Run the deploy script on the server
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "bash /home/ubuntu/deploy.sh"
