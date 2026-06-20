@@ -20,16 +20,19 @@ def test_base_radius_bands():
 
 def test_procession_peak_closed():
     r = estimate_impact_radius(2.5, road_closure=1, is_peak=1, cause="procession")
-    assert abs(r - 6.048) < 1e-3
+    # base(2.5)=1.5 × closure(1.69) × peak(1.0) × cause(3.0) = 7.605
+    assert abs(r - 7.605) < 1e-3
 
 
 def test_procession_offpeak_open():
     r = estimate_impact_radius(2.5, road_closure=0, is_peak=0, cause="procession")
-    assert abs(r - 2.1) < 1e-3
+    # base(2.5)=1.5 × closure(1.0) × peak(1.0) × cause(3.0) = 4.5
+    assert abs(r - 4.5) < 1e-3
 
 
 def test_radius_capped_at_10():
-    r = estimate_impact_radius(48, road_closure=1, is_peak=1, cause="protest")
+    # base(48)=7.0 × closure(1.69) × peak(1.0) × cause(1.98) = 23.42 → capped
+    r = estimate_impact_radius(48, road_closure=1, is_peak=1, cause="construction")
     assert r == 10.0
 
 

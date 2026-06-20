@@ -287,7 +287,5 @@ MAJOR_CORRIDORS = {"ORR", "Hosur Road", "Bellary Road"}
 MAJOR_CORRIDOR_IMPORTANCE = 1.5
 DEFAULT_CORRIDOR_IMPORTANCE = 1.0
 
-# ─────────────────────────────────────────────────────────────────────────────
-# External APIs (MapMyIndia) — optional; system runs fully on Haversine if absent
-# ─────────────────────────────────────────────────────────────────────────────
+
 PEAK_TRAVEL_TIME_FACTOR = 1.4   # peak-hour adjustment for API travel times

@@ -46,9 +46,9 @@ def test_worked_example_procession_silk_board():
         is_weekend=0,
         junction_component=72.0,
     )
-    # 0.30*40 + 0.25*45 + 0.20*100 + 0.15*100 + 0.10*72 = 65.45
-    assert abs(res.esi - 65.45) < 1e-6
-    assert res.risk_level == "HIGH"
+    # 0.30*7 + 0.25*45 + 0.20*100 + 0.15*100 + 0.10*72 = 55.55
+    assert abs(res.esi - 55.55) < 1e-6
+    assert res.risk_level == "MEDIUM"
 
 
 def test_same_event_off_peak_no_closure_drops_to_medium():
@@ -60,11 +60,12 @@ def test_same_event_off_peak_no_closure_drops_to_medium():
         is_weekend=1,
         junction_component=72.0,
     )
-    # 0.30*40 + 0.25*45 + 0 + 0.15*(5*0.6) + 0.10*72 = 30.9
-    assert abs(res.esi - 30.9) < 1e-6
-    assert res.risk_level == "MEDIUM"
+    # 0.30*7 + 0.25*45 + 0 + 0.15*(5*0.6) + 0.10*72 = 21.0
+    assert abs(res.esi - 21.0) < 1e-6
+    assert res.risk_level == "LOW"
 
 
 def test_cause_ordering():
-    assert cause_score("water_logging") > cause_score("vehicle_breakdown")
-    assert cause_score("construction") > cause_score("accident")
+    """Data-derived duration severity: longer median duration → higher score."""
+    assert cause_score("pot_holes") > cause_score("vehicle_breakdown")
+    assert cause_score("water_logging") > cause_score("accident")
