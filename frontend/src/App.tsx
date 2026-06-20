@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { getJunctions, getOverview, predict } from "./api";
 import type { EventInput, Junction, Overview, Prediction } from "./types";
 import { combinePredictions } from "./combine";
-import { warmEscapeRoutes } from "./routeCache";
 import EventForm from "./components/EventForm";
 import PredictionPanel from "./components/PredictionPanel";
 import WhyPanel from "./components/WhyPanel";
@@ -79,7 +78,6 @@ export default function App() {
     setError(null);
     try {
       const pred = await predict(input);
-      warmEscapeRoutes(pred);
       setCommitted((prev) => [...prev, { input, pred }]);
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Prediction failed");
