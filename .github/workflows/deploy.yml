@@ -24,6 +24,7 @@ jobs:
           chmod 600 /tmp/deploy_key
 
           # Add host to known_hosts to avoid interactive prompt
+          mkdir -p ~/.ssh
           ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
 
           # Run the deploy script on the server
