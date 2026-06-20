@@ -286,7 +286,7 @@ python scripts/geocode_hospitals_pass3.py  # pass 3: curated aliases + relaxed m
 | `artifacts/duration_model.joblib` | trained LightGBM model | `scripts/04_train_duration.py` |
 | `data/feedback.jsonl` | post-event feedback (the learning loop) | written live by `/api/feedback` |
 
-**The Learning Loop:** every resolved event recorded via `/api/feedback` calibrates future duration predictions for that junction/cause — institutional memory that compounds instead of resetting after each incident.
+**The Learning Loop:** every resolved event recorded via `/api/feedback` does two things. (1) It calibrates future duration predictions for that junction/cause (the lightweight `feedback.jsonl` shrinkage layer). (2) The officer's free-text note is **deciphered by Gemini** (`notes_ai.structure_event`) into a structured row matching the raw dataset schema — cause, road-closure, vehicle, priority, description, duration — enriched with the junction's coordinates/zone, **appended to `data/raw/astra_events.csv`** (`astra/ingest.py`), and the **full pipeline is re-run in a background thread** (`build_all.py`) so the model, risk tables, ESI scores, and spillover graph retrain on the new event before the API hot-reloads its state. Poll `/api/pipeline/status`; set `ASTRA_RETRAIN_ON_FEEDBACK=0` to ingest without retraining.
 
 *At production scale the natural next step is Postgres for the event log and a shared store for `feedback.jsonl` (DynamoDB / S3 / EFS) so multiple backend instances stay consistent — not because Pandas-in-memory breaks, but because horizontal scaling needs a shared source of truth.*
 
@@ -302,6 +302,7 @@ Base path `/api`. Full request/response schemas are Pydantic models exposed at `
 | `/api/predict` | POST | Main prediction — `EventInput` → full six-engine `Prediction` |
 | `/api/feedback` | POST | Record a resolved event (drives the learning loop) |
 | `/api/feedback/summary` | GET | Aggregate feedback stats |
+| `/api/pipeline/status` | GET | Whether a feedback-triggered retrain is in progress |
 | `/api/junctions` | GET | All 294 junctions with coordinates + risk scores |
 | `/api/corridors` | GET | Corridors with historical risk metrics |
 | `/api/events` | GET | Recent scored events (heatmap points) |
@@ -354,6 +355,8 @@ Flipkart_gridlock_2.0/
 │   ├── models/duration_model.py     # LightGBM duration model (the only ML)
 │   ├── engines/                     # impact_radius · spillover · similar_events · diversion · resource_planner
 │   ├── integrations/mappls.py       # Mappls token + route_eta + matrix
+│   ├── integrations/notes_ai.py     # Gemini — extract insights + structure_event
+│   ├── ingest.py                    # feedback → dataset row → append → background retrain
 │   └── api/                         # main.py (FastAPI) · schemas.py (pydantic)
 ├── scripts/
 │   ├── 01_preprocess … 05_build_graph.py · build_all.py
@@ -552,7 +555,8 @@ The full system is **implemented and runnable end-to-end**, built phase by phase
 | Multi-event stacking (Simulator) | ✅ `App.tsx` · `combine.ts` · `EventForm.tsx` |
 | With-vs-without replay + sequential green corridors (ASTRA Impact) | ✅ `CompareView.tsx` |
 | What-If: data-driven projection + per-junction drill-down + animated spread | ✅ `WhatIfView.tsx` |
-| Emergency dispatch + 179-hospital network (174 exact coords) | ✅ `EmergencyView.tsx` · `hospitalsData.ts` · `scripts/geocode_hospitals*.py` |
+| Emergency dispatch (per-incident) + 179-hospital network (174 exact), general-hospital preference | ✅ `EmergencyView.tsx` · `hospitalsData.ts` · `scripts/geocode_hospitals*.py` |
+| Feedback → Gemini-structured dataset row → append → background retrain | ✅ `astra/ingest.py` · `notes_ai.structure_event` · `/api/feedback` |
 | Docker + AWS deployment | ✅ `Dockerfile` · `docker-compose.yml` · `docs/DEPLOYMENT.md` |
 
 **Measured performance:** Median AE 0.67 h, p10–p90 hit-rate 79%, long-event ROC-AUC 0.87; full pipeline ~15 ms/event after ~0.4 s startup.

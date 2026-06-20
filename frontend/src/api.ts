@@ -20,6 +20,20 @@ export async function postFeedback(fb: FeedbackInput) {
   };
 }
 
+export async function postLiveIncident(payload: {
+  junction: string;
+  cause?: string;
+  hour?: number;
+  weekday?: number;
+  congestion?: number;
+  vehicle_count?: number;
+  road_closure?: boolean;
+  note?: string;
+}): Promise<{ input: EventInput; prediction: Prediction; ingested: boolean }> {
+  const { data } = await api.post("/live/incident", payload);
+  return data as { input: EventInput; prediction: Prediction; ingested: boolean };
+}
+
 export async function getJunctions(): Promise<Junction[]> {
   const { data } = await api.get<Junction[]>("/junctions");
   return data;

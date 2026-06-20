@@ -3,9 +3,10 @@ from __future__ import annotations
 import math
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .. import config, ingest
@@ -82,6 +83,46 @@ def predict(event: EventInput):
         return _clean(state["pipeline"].analyze(event.model_dump()))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/live/incident")
+def live_incident(payload: dict = Body(default={})):
+    junction = payload.get("junction")
+    if not junction:
+        raise HTTPException(status_code=400, detail="junction required")
+    cause = payload.get("cause") or "congestion"
+    now = datetime.now(timezone.utc)
+    hour = int(payload.get("hour", now.hour))
+    weekday = int(payload.get("weekday", now.weekday()))
+    event = {
+        "event_cause": cause,
+        "junction": junction,
+        "hour": hour,
+        "weekday": weekday,
+        "road_closure": bool(payload.get("road_closure", False)),
+        "priority_high": bool(payload.get("priority_high", False)),
+    }
+    try:
+        prediction = _clean(state["pipeline"].analyze(event))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    ingested = False
+    try:
+        note = payload.get("note") or (
+            f"Live CCTV detection at {junction}: {payload.get('vehicle_count', '?')} vehicles, "
+            f"congestion {payload.get('congestion', '?')}%."
+        )
+        fb = {"junction": junction, "event_cause": cause, "hour": hour, "weekday": weekday, "actual_hours": None, "notes": note}
+        structured = {"event_cause": cause, "requires_road_closure": bool(payload.get("road_closure", False)), "veh_type": "unknown", "description": note}
+        row = ingest.build_raw_row(fb, structured, state.get("junctions"))
+        if row.get("latitude") is not None:
+            ingest.append_event(row)
+            ingested = True
+    except Exception as exc:
+        print("[live] ingest failed:", exc)
+
+    return {"input": event, "prediction": prediction, "ingested": ingested}
 
 
 @app.post("/api/feedback")
