@@ -17,6 +17,7 @@ export default function FeedbackForm({ p, onSaved }: { p: Prediction; onSaved: (
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [insight, setInsight] = useState<{ delay_factors?: string[]; notes_summary?: string; inferred_effective?: string } | null>(null);
+  const [meta, setMeta] = useState<{ ingested?: boolean; retraining?: boolean; structured?: { event_cause?: string; veh_type?: string; requires_road_closure?: boolean; description?: string } | null } | null>(null);
 
   async function submit() {
     if (!actual) return;
@@ -37,6 +38,7 @@ export default function FeedbackForm({ p, onSaved }: { p: Prediction; onSaved: (
         notes: notes || null,
       });
       setInsight(res.insight || null);
+      setMeta({ ingested: res.ingested, retraining: res.retraining, structured: res.structured ?? null });
       setDone(true);
       onSaved();
     } finally {
@@ -67,8 +69,31 @@ export default function FeedbackForm({ p, onSaved }: { p: Prediction; onSaved: (
             )}
           </div>
         )}
+        {meta?.ingested && (
+          <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-emerald-400 mb-1.5">
+              <span>{meta.retraining ? "↻ Added to dataset · pipeline retraining" : "✓ Added to the training dataset"}</span>
+            </div>
+            <div className="text-[10px] t-text-muted leading-relaxed mb-2">
+              Gemini structured your note into a dataset row{meta.retraining ? " and the ML pipeline is rebuilding on it in the background." : "."}
+            </div>
+            {meta.structured && (
+              <div className="flex flex-wrap gap-1">
+                {meta.structured.event_cause && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md t-text-2" style={{ background: "var(--bg-card-inner)" }}>cause · {meta.structured.event_cause.replace(/_/g, " ")}</span>
+                )}
+                {meta.structured.veh_type && meta.structured.veh_type !== "unknown" && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md t-text-2" style={{ background: "var(--bg-card-inner)" }}>vehicle · {meta.structured.veh_type.replace(/_/g, " ")}</span>
+                )}
+                {meta.structured.requires_road_closure != null && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md t-text-2" style={{ background: "var(--bg-card-inner)" }}>closure · {meta.structured.requires_road_closure ? "yes" : "no"}</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <button
-          onClick={() => { setDone(false); setInsight(null); setActual(""); setResources(""); setEffective(""); setNotes(""); }}
+          onClick={() => { setDone(false); setInsight(null); setMeta(null); setActual(""); setResources(""); setEffective(""); setNotes(""); }}
           className="mt-3 text-[11px] t-text-muted underline"
         >
           Log another outcome

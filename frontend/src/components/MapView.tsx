@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { mapplsDirections, mapplsStatus, mapplsToken } from "../api";
+import { mapplsStatus, mapplsToken } from "../api";
+import { cachedDirections } from "../routeCache";
 import type { AffectedJunction, Prediction } from "../types";
 
 declare global {
@@ -85,11 +86,15 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   const litCount = affected40.filter((a) => (a.eta_min ?? 0) <= clock).length;
 
   const clearOne = (o: any) => {
+    if (!o) return;
+    const M = window.mappls;
     try {
-      o.remove ? o.remove() : mapRef.current?.removeLayer?.(o);
-    } catch {
-      /* ignore */
-    }
+      if (M && typeof M.remove === "function") { M.remove({ map: mapRef.current, layer: o }); return; }
+    } catch { /* fall through */ }
+    try {
+      if (typeof o.remove === "function") { o.remove(); return; }
+    } catch { /* fall through */ }
+    try { mapRef.current?.removeLayer?.(o); } catch { /* ignore */ }
   };
 
   function clearRoute() {
@@ -166,7 +171,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
 
     let path: { lat: number; lng: number }[];
     try {
-      const res = await mapplsDirections(`${a.lat},${a.lon}`, `${e.to_lat},${e.to_lon}`);
+      const res = await cachedDirections(`${a.lat},${a.lon}`, `${e.to_lat},${e.to_lon}`);
       path = res.path;
     } catch {
       setRouteError("Mappls could not return a road route for this junction.");
@@ -273,7 +278,7 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
   }, [configured]);
 
   useEffect(() => {
-    if (!ready || !mapRef.current || !window.mappls || !prediction) return;
+    if (!ready || !mapRef.current || !window.mappls) return;
     const map = mapRef.current;
 
     if (typeof map.resize === "function") map.resize();
@@ -286,23 +291,31 @@ export default function MapView({ prediction }: { prediction: Prediction | null 
     setClock(0);
     overlaysRef.current.forEach(clearOne);
     overlaysRef.current = [];
+    affectedRef.current = [];
+
+    if (!prediction) return;
 
     const { latitude, longitude } = prediction.event;
+    const incidents = prediction.incidents?.length
+      ? prediction.incidents
+      : [{ lat: latitude, lon: longitude, impact_radius_km: prediction.impact_radius_km, label: prediction.event.junction || "" }];
     try {
-      overlaysRef.current.push(
-        new window.mappls.Circle({
-          map,
-          center: { lat: latitude, lng: longitude },
-          radius: prediction.impact_radius_km * 1000,
-          fillColor: "#ef4444",
-          fillOpacity: 0.12,
-          strokeColor: "#ef4444",
-          strokeWeight: 1,
-        })
-      );
-      overlaysRef.current.push(
-        new window.mappls.Marker({ map, position: { lat: latitude, lng: longitude } })
-      );
+      for (const inc of incidents) {
+        overlaysRef.current.push(
+          new window.mappls.Circle({
+            map,
+            center: { lat: inc.lat, lng: inc.lon },
+            radius: inc.impact_radius_km * 1000,
+            fillColor: "#ef4444",
+            fillOpacity: 0.12,
+            strokeColor: "#ef4444",
+            strokeWeight: 1,
+          })
+        );
+        overlaysRef.current.push(
+          new window.mappls.Marker({ map, position: { lat: inc.lat, lng: inc.lon } })
+        );
+      }
       affectedRef.current = prediction.affected_junctions.slice(0, 40);
       renderCascade(0);
       map.setCenter?.({ lat: latitude, lng: longitude });

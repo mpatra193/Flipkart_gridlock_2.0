@@ -13,7 +13,7 @@ Backend:
 ```bash
 pip install -r requirements.txt
 python scripts/build_all.py          # one-time: regenerates data/processed + artifacts
-uvicorn astra.api.main:app --reload --port 8000
+uvicorn astra.api.main:app --reload --port 8001   # dev port — matches the Vite proxy
 ```
 
 Frontend (separate terminal):
@@ -21,8 +21,13 @@ Frontend (separate terminal):
 ```bash
 cd frontend
 npm install
-npm run dev                          # http://localhost:5173, proxies /api -> :8000
+npm run dev                          # http://localhost:5173, proxies /api -> :8001
 ```
+
+> Local dev runs the backend on **:8001** (the Vite proxy target in `vite.config.ts`).
+> The Docker image serves on **:8000** internally. The full cloud topology
+> (S3/CloudFront + ECR/Fargate/ALB + SSM secrets + CI/CD) is in
+> [`README.md` §14 — AWS Deployment Plan](../README.md#14-aws-deployment-plan).
 
 `build_all.py` runs the five pipeline stages in order (preprocess → memory tables
 → ESI → duration model → spillover graph). It must run once before the API can

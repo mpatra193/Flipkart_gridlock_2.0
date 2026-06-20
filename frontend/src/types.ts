@@ -136,6 +136,8 @@ export interface Prediction {
   top_delay_factors?: { factor: string; count: number }[];
   similar_event_count: number;
   affected_junctions: AffectedJunction[];
+  incidents?: { lat: number; lon: number; impact_radius_km: number; label: string; esi: number }[];
+  event_count?: number;
   similar: {
     match_count: number;
     matches: SimilarMatch[];

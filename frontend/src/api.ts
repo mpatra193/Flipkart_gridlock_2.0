@@ -13,6 +13,9 @@ export async function postFeedback(fb: FeedbackInput) {
   return data as {
     saved: boolean;
     insight?: { delay_factors?: string[]; inferred_effective?: string; inferred_hours?: number; notes_summary?: string };
+    structured?: { event_cause?: string; requires_road_closure?: boolean; veh_type?: string; priority?: string; description?: string; duration_hours?: number } | null;
+    ingested?: boolean;
+    retraining?: boolean;
     summary: { total: number; by_cause: Record<string, number> };
   };
 }

@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getJunctions, getOverview, predict } from "./api";
 import type { EventInput, Junction, Overview, Prediction } from "./types";
+import { combinePredictions } from "./combine";
+import { warmEscapeRoutes } from "./routeCache";
 import EventForm from "./components/EventForm";
 import PredictionPanel from "./components/PredictionPanel";
 import WhyPanel from "./components/WhyPanel";
@@ -45,10 +47,14 @@ export default function App() {
   const [tab, setTab] = useState<"simulator" | "compare" | "interventions" | "whatif" | "emergency" | "overview">("simulator");
   const [junctions, setJunctions] = useState<Junction[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [prediction, setPrediction] = useState<Prediction | null>(null);
-  const [lastInput, setLastInput] = useState<EventInput | null>(null);
+  const [committed, setCommitted] = useState<{ input: EventInput; pred: Prediction }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const prediction = useMemo<Prediction | null>(
+    () => (committed.length ? combinePredictions(committed.map((c) => c.pred)) : null),
+    [committed]
+  );
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem("astra-theme");
     return saved ? saved === "dark" : true;
@@ -68,16 +74,32 @@ export default function App() {
     }
   }, [dark]);
 
-  async function runPredict(input: EventInput) {
+  async function addEvent(input: EventInput) {
     setLoading(true);
     setError(null);
-    setLastInput(input);
     try {
-      setPrediction(await predict(input));
+      const pred = await predict(input);
+      warmEscapeRoutes(pred);
+      setCommitted((prev) => [...prev, { input, pred }]);
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Prediction failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function clearEvents() {
+    setCommitted([]);
+  }
+
+  async function refreshLast() {
+    if (!committed.length) return;
+    const last = committed[committed.length - 1];
+    try {
+      const pred = await predict(last.input);
+      setCommitted((prev) => prev.map((c, i) => (i === prev.length - 1 ? { input: last.input, pred } : c)));
+    } catch {
+      /* ignore */
     }
   }
 
@@ -147,7 +169,13 @@ export default function App() {
         <div className="flex-1 flex gap-4 p-4 overflow-hidden">
           {/* Left sidebar */}
           <div className="w-72 shrink-0 overflow-y-auto pb-4 custom-scroll">
-            <EventForm junctions={junctions} loading={loading} onSubmit={runPredict} />
+            <EventForm
+              junctions={junctions}
+              loading={loading}
+              committed={committed.map((c) => c.input)}
+              onSubmit={addEvent}
+              onClear={clearEvents}
+            />
           </div>
 
           {/* Map */}
@@ -168,7 +196,7 @@ export default function App() {
                 <DiversionPanel d={prediction.diversions} />
                 <SpilloverTimeline p={prediction} />
                 <SimilarPanel s={prediction.similar} />
-                <FeedbackForm p={prediction} onSaved={() => { if (lastInput) runPredict(lastInput); }} />
+                <FeedbackForm p={prediction} onSaved={refreshLast} />
               </>
             ) : (
               <div className="glass p-8 text-center">
@@ -194,7 +222,7 @@ export default function App() {
       )}
       {tab === "whatif" && (
         <div className="flex-1 p-4 overflow-hidden">
-          <WhatIfView prediction={prediction} junctions={junctions} />
+          <WhatIfView prediction={prediction} />
         </div>
       )}
       {tab === "emergency" && (

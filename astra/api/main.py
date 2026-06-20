@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import math
+import os
 from contextlib import asynccontextmanager
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .. import config
+from .. import config, ingest
 from ..integrations import mappls, notes_ai
 from ..pipeline import AstraPipeline
 from .schemas import DirectionsRequest, EventInput, FeedbackInput, MatrixRequest
@@ -42,16 +43,21 @@ def _dominant_attr(df, col):
     return tmp.groupby("junction")["val"].agg(lambda s: s.mode().iloc[0]).to_dict()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    state["pipeline"] = AstraPipeline.load()
+def _load_state():
+    pipeline = AstraPipeline.load()
     junctions = pd.read_parquet(config.JUNCTION_RISK)
     clean = pd.read_parquet(config.EVENTS_CLEAN)
     junctions["police_station"] = junctions["junction"].map(_dominant_attr(clean, "police_station"))
     junctions["zone"] = junctions["junction"].map(_dominant_attr(clean, "zone"))
+    state["pipeline"] = pipeline
     state["junctions"] = junctions
     state["corridors"] = pd.read_parquet(config.CORRIDOR_RISK)
     state["events"] = pd.read_parquet(config.EVENTS_SCORED)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _load_state()
     yield
     state.clear()
 
@@ -92,7 +98,34 @@ def add_feedback(fb: FeedbackInput):
     if record.get("actual_hours") is None and insight.get("inferred_hours"):
         record["actual_hours"] = insight["inferred_hours"]
     store.add(record)
-    return {"saved": True, "insight": insight, "summary": store.summary()}
+
+    structured: dict = {}
+    ingested = False
+    retraining = False
+    try:
+        structured = notes_ai.structure_event(record.get("notes"), record.get("event_cause"), record.get("junction"))
+        row = ingest.build_raw_row(record, structured, state.get("junctions"))
+        if row.get("latitude") is not None and row.get("closed_datetime") not in (None, "NULL"):
+            ingest.append_event(row)
+            ingested = True
+            if os.getenv("ASTRA_RETRAIN_ON_FEEDBACK", "1") != "0":
+                retraining = ingest.rebuild_and_reload(_load_state)
+    except Exception as exc:
+        print("[feedback] ingest failed:", exc)
+
+    return {
+        "saved": True,
+        "insight": insight,
+        "structured": structured or None,
+        "ingested": ingested,
+        "retraining": retraining,
+        "summary": store.summary(),
+    }
+
+
+@app.get("/api/pipeline/status")
+def pipeline_status():
+    return ingest.status()
 
 
 @app.get("/api/feedback/summary")

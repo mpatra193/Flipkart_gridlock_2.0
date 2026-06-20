@@ -34,8 +34,11 @@ frontend/.vite/
 Thumbs.db
 .vscode/
 .idea/
+.claude/
 
 # Secrets
 .env
 .env.*
 !.env.example
+
+./test_hospital

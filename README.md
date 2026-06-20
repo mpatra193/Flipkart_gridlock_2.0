@@ -1,18 +1,19 @@
 
 # 🚦 ASTRA — Autonomous Strategic Traffic Response Assistant
 
-**An AI-powered decision-support system for Traffic Police**
+**An AI-powered decision-support & emergency-response system for Traffic Police**
 
 *Built for Flipkart Grid 6.0 — Event-Driven Congestion (Planned & Unplanned)*
 
 ![Status](https://img.shields.io/badge/status-implemented-brightgreen)
 ![ML](https://img.shields.io/badge/ML-LightGBM-green)
 ![Backend](https://img.shields.io/badge/backend-FastAPI-009688)
-![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-61DAFB)
+![Frontend](https://img.shields.io/badge/frontend-React%2019%20%2B%20TypeScript-61DAFB)
+![Maps](https://img.shields.io/badge/maps-Mappls%20Vector%20SDK-4285F4)
 ![Cloud](https://img.shields.io/badge/cloud-AWS-orange)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-📄 Full formulas, data audits, and worked examples for every engine below live in [`DESIGN_SPEC.md`](DESIGN_SPEC.md) — this README is the judge-facing summary.
+📄 Full formulas, data audits, and worked examples for every engine live in [`DESIGN_SPEC.md`](DESIGN_SPEC.md) — this README is the judge-facing summary. Deployment runbook in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 
@@ -20,7 +21,7 @@
 
 > Every traffic event — a breakdown, a procession, a flooded road — is currently handled the same way: an officer looks at it, guesses how bad it is, and deploys resources from memory. **ASTRA replaces the guess.**
 >
-> Feed it an event (cause, location, time, road-closure status) and in under a second it tells you: how severe it is (0–100 score), how long it will likely last (ML-predicted), how far the congestion will spread (km), exactly which junctions will be hit and how badly, which corridors to divert traffic to, how many officers/barricades/patrol vehicles to deploy and *where*, and — critically — **what happened the last 14 times something like this occurred.**
+> Feed it an event (cause, location, time, road-closure status) and in under a second it tells you: how severe it is (0–100 score), how long it will likely last (ML-predicted), how far the congestion will spread (km), exactly which junctions will be hit and how badly, which corridors to divert traffic to, how many officers/barricades/patrol vehicles to deploy and *where*, and — critically — **what happened the last 14 times something like this occurred.** Stack multiple simultaneous events, replay the jam with-vs-without ASTRA, and dispatch an ambulance down a priority green corridor from the nearest of 179 mapped Bengaluru hospitals.
 >
 > It is a **decision-support system**, not a black box. Every rule-based number is traceable to a formula derived from the dataset. The only machine-learned number is event duration, because it is the only one with a real label to train against.
 
@@ -35,17 +36,18 @@
 5. [Machine Learning Pipeline](#5-machine-learning-pipeline)
 6. [Rule-Based Decision Engines](#6-rule-based-decision-engines)
 7. [Backend](#7-backend)
-8. [Frontend](#8-frontend)
-9. [Data Storage](#9-data-storage)
-10. [API Reference](#10-api-reference)
-11. [Project Structure](#11-project-structure)
-12. [Local Setup](#12-local-setup)
-13. [AWS Deployment](#13-aws-deployment)
-14. [Build Roadmap](#14-build-roadmap)
-15. [Current Implementation Status](#15-current-implementation-status)
-16. [Honest Limitations](#16-honest-limitations)
-17. [Future Scope](#17-future-scope)
-18. [Team](#18-team)
+8. [Frontend & Command-Centre Tabs](#8-frontend--command-centre-tabs)
+9. [Emergency Hospital Network](#9-emergency-hospital-network)
+10. [Data Storage](#10-data-storage)
+11. [API Reference](#11-api-reference)
+12. [Project Structure](#12-project-structure)
+13. [Local Setup](#13-local-setup)
+14. [AWS Deployment Plan](#14-aws-deployment-plan)
+15. [CI/CD](#15-cicd)
+16. [Current Implementation Status](#16-current-implementation-status)
+17. [Honest Limitations](#17-honest-limitations)
+18. [Future Scope](#18-future-scope)
+19. [Team](#19-team)
 
 ---
 
@@ -77,12 +79,14 @@ flowchart LR
     E --> G[Resource Planner<br/>officers/barricades/vehicles]
     B -.-> H[Similar Event Engine<br/>k-NN historical match]
     C --> H
-    F --> I[Command Center UI]
+    F --> I[Command Centre UI]
     G --> I
     H --> I
 ```
 
 **Design principle — ML only where a real label exists.** The dataset has exactly one measurable outcome: `closed_datetime − start_datetime` (event duration). That is the only thing ASTRA predicts with machine learning. Severity, congestion spread, propagation, diversion scoring, and resourcing are **transparent rule-based formulas**, each derived from a measurable pattern in the data and documented with its own justification (see [Section 6](#6-rule-based-decision-engines)). A traffic officer can inspect, question, and override every number — nothing is a black box.
+
+On top of the prediction core, the command centre adds four operational views: **multi-event stacking** (combine simultaneous incidents), a **with-vs-without ASTRA replay**, an interactive **What-If simulator**, and an **emergency dispatch planner** that routes a priority green corridor from the nearest hospital. See [Section 8](#8-frontend--command-centre-tabs).
 
 ---
 
@@ -91,42 +95,38 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph Client["Client Layer"]
-        UI[React + TypeScript Dashboard]
-        EXT[What-If Simulator]
+        UI[React 19 + TypeScript Dashboard]
+        MAP[Mappls Vector Map SDK]
     end
 
     subgraph Edge["AWS Edge"]
-        CF[CloudFront CDN]
+        CF[CloudFront CDN + HTTPS]
         S3[S3 — static React build]
     end
 
     subgraph Compute["AWS Compute"]
         ALB[Application Load Balancer]
-        EC2[EC2 t3.medium]
-        API[FastAPI backend]
-        ML[LightGBM model<br/>in-memory]
-        GRAPH[NetworkX spillover graph<br/>in-memory]
-        TABLES[Risk tables<br/>CSV → Pandas, in-memory]
+        SVC[FastAPI container<br/>ECS Fargate or EC2]
+        ML[LightGBM model — in-memory]
+        GRAPH[NetworkX spillover graph — in-memory]
+        TABLES[Risk tables — parquet to Pandas, in-memory]
     end
 
-    subgraph External["External APIs (minimal use)"]
-        MMI1[MapMyIndia Distance Matrix<br/>precomputed once]
-        MMI2[MapMyIndia Directions<br/>live route polylines]
+    subgraph External["External APIs"]
+        MMI[Mappls route_eta<br/>live route polylines]
     end
 
     UI --> CF
     CF --> S3
     CF -->|/api/*| ALB
-    ALB --> EC2
-    EC2 --> API
-    API --> ML
-    API --> GRAPH
-    API --> TABLES
-    API -.->|offline, one-time| MMI1
-    API -.->|3-4 calls per simulation| MMI2
+    ALB --> SVC
+    SVC --> ML
+    SVC --> GRAPH
+    SVC --> TABLES
+    SVC -.->|few calls per simulation| MMI
 ```
 
-**Why no database.** The full historical dataset is 8,173 rows / 45 columns — well under 10 MB. It is loaded once into Pandas DataFrames at process start and held in memory for the lifetime of the backend. Adding Postgres/Mongo here would add latency, infra cost, and deployment complexity with zero benefit at this scale. See [Section 9](#9-data-storage) for what this would look like at production scale.
+**Why no database.** The full historical dataset is ~8,000 rows / 45 columns — well under 10 MB. It is loaded once into Pandas DataFrames at process start and held in memory for the lifetime of the backend. The backend is **stateless** apart from one append-only file (`data/feedback.jsonl`, the learning loop). Adding Postgres/Mongo here would add latency, infra cost, and deployment complexity with near-zero benefit at this scale — see [Section 10](#10-data-storage) for what production scale would look like.
 
 ---
 
@@ -172,29 +172,23 @@ Cleaned by dropping negative durations, zero durations, and outliers beyond 168 
 | `weekday` | int 0–6 | Weekend response is slower |
 | `latitude`, `longitude` | float | Replaces `junction`/`zone` (70%/58% missing) — tree models split on coordinates natively |
 
-**Deliberately excluded:** `junction` name (too sparse), `affected_distance` (near-zero variance, see Section 4), free-text `description` (bilingual NLP out of scope for the timeline), `status` (leaks the label).
+**Deliberately excluded:** `junction` name (too sparse), `affected_distance` (near-zero variance, see Section 4), free-text `description` (bilingual NLP out of scope), `status` (leaks the label).
 
 ### 5.3 Model
 
-**LightGBM Regressor** — chosen over Linear Regression (relationships are non-linear and interaction-heavy: road-closure × peak-hour compounds multiplicatively) and Random Forest (slower, no native categorical handling). LightGBM handles categoricals and missing values natively and trains in well under a second on 2,700 rows.
+**LightGBM Regressor** — chosen over Linear Regression (relationships are non-linear and interaction-heavy: road-closure × peak-hour compounds multiplicatively) and Random Forest (slower, no native categorical handling). LightGBM handles categoricals and missing values natively and trains in well under a second on 2,700 rows. The pipeline is **risk-aware**: it fits p10/p50/p90 quantiles plus a long-event (>6 h) classifier, so severity uses the planning (p90) duration and confidence uses the p10–p90 band width.
 
 ### 5.4 Validation
 
 **80/20 split by time, not random** — the oldest 80% of events train the model, the most recent 20% test it. This mirrors real deployment (predict the future from the past) and avoids leaking future patterns into training.
 
-| Metric | Expected Range | What It Means |
-|---|---|---|
-| MAE | 3–8 hours | Average prediction error |
-| RMSE | higher than MAE | Penalizes the long-tail outliers harder |
-| Median AE | lower than MAE | The "typical" error, robust to skew |
-
-Expected feature importance order (validated post-training): `event_cause` (~35%) > `corridor` (~20%) > `hour` (~15%) > `latitude` (~12%) > `longitude` (~8%) > `road_closure` (~5%) > `priority` (~3%) > `weekday` (~2%). This ordering is itself evidence the model learned something real — `event_cause` also carries the highest weight in the hand-built ESI formula, an independent confirmation from two different methods.
+Measured on the newest-20% time split: **Median AE 0.67 h**, p10–p90 interval hit-rate **79%**, long-event classifier **ROC-AUC 0.87**. Expected feature-importance order (independently confirmed against the hand-built ESI weighting): `event_cause` > `corridor` > `hour` > `latitude` > `longitude` > `road_closure` > `priority` > `weekday`.
 
 ---
 
 ## 6. Rule-Based Decision Engines
 
-Every engine below is **deterministic and inspectable** — same inputs always produce the same output, and every coefficient has a documented physical justification. Full worked examples and derivations are in [`DESIGN_SPEC.md`](DESIGN_SPEC.md) (sections 4, 6–10); summarized here:
+Every engine below is **deterministic and inspectable** — same inputs always produce the same output, and every coefficient has a documented physical justification. Full worked examples are in [`DESIGN_SPEC.md`](DESIGN_SPEC.md) (sections 4, 6–10); summarized here:
 
 | Engine | Formula (summary) | Output |
 |---|---|---|
@@ -202,10 +196,10 @@ Every engine below is **deterministic and inspectable** — same inputs always p
 | **Impact Radius** | `min(base(duration) × M_closure × M_peak × M_cause, 10 km)` | how far congestion spreads, in km |
 | **Spillover Propagation Graph** | NetworkX BFS from the blocked junction; `congestion_j = congestion_i × e^(−edge_weight/κ)`, κ=2.0, cutoff at 10% | per-junction congestion %, HIGH/MEDIUM/LOW |
 | **Similar Event Engine** | weighted k-NN over `cause(0.35) + location(0.25) + closure(0.20) + hour(0.12) + weekday(0.08)` | top-K historical matches + confidence score |
-| **Diversion Engine** | 3-layer corridor scoring (current load 0.4, historical reliability 0.3, capacity 0.3) + spillover-based avoid-list + historical cascade analysis | ranked diversion corridors with confidence % |
-| **Resource Planner** | `point_duty + perimeter_officers + site_officers` (capped at 50); `barricades = site + ⌈radius×4⌉`; `patrol = ⌈area/8⌉` | officer/barricade/patrol-vehicle counts, per-junction deployment plan |
+| **Diversion Engine** | 3-layer corridor scoring (load 0.4, reliability 0.3, capacity 0.3) + spillover avoid-list | ranked diversion corridors with confidence % |
+| **Resource Planner** | `point_duty + perimeter + site` officers (capped 50); `barricades = site + ⌈radius×4⌉`; `patrol = ⌈area/8⌉` | officer/barricade/patrol counts, per-junction plan |
 
-**Why rules and not ML for these six:** none of them has a real measured label in the dataset (nobody recorded "how far did the jam spread" or "did the diversion succeed"). A model trained against a self-assigned label is not more trustworthy than a documented formula — it's just less explainable. Every multiplier above (1.8 for closure, 1.6 for peak hour, etc.) is derived from an actual ratio observed in the data (e.g. road-closure events run 1.45× longer at the median, scaled up by an estimated forced-rerouting factor) rather than picked arbitrarily.
+**Why rules and not ML for these six:** none has a real measured label in the dataset (nobody recorded "how far did the jam spread" or "did the diversion succeed"). A model trained against a self-assigned label is not more trustworthy than a documented formula — just less explainable. Every multiplier (1.8 for closure, 1.6 for peak hour, etc.) is derived from an actual ratio observed in the data, not picked arbitrarily.
 
 ---
 
@@ -213,120 +207,140 @@ Every engine below is **deterministic and inspectable** — same inputs always p
 
 | Layer | Technology | Role |
 |---|---|---|
-| Web framework | **FastAPI** (Python 3.11) | Async REST API, auto-generated OpenAPI docs |
-| Server | Uvicorn | ASGI server, single process |
-| ML | LightGBM, scikit-learn | Duration model training + inference |
+| Web framework | **FastAPI** (Python 3.12) | Async REST API, auto-generated OpenAPI docs at `/docs` |
+| Server | Uvicorn (`uvicorn[standard]`) | ASGI server |
+| ML | LightGBM, scikit-learn, joblib | Duration model training + inference |
 | Graph | NetworkX | Spillover propagation graph (294 nodes) |
-| Data | Pandas, NumPy | All risk tables and feature pipelines, held in memory |
-| Geospatial | Haversine (hand-rolled, vectorized with NumPy) | Free distance calculations everywhere except live diversion routing |
-| External API | MapMyIndia Distance Matrix + Directions | Real road distances for the spillover graph edges (precomputed) and live diversion polylines (on-demand) |
+| Data | Pandas, NumPy, PyArrow | Risk tables + feature pipelines, parquet, held in memory |
+| Geospatial | Haversine (vectorized NumPy) | Free distance maths everywhere except live routing |
+| External API | Mappls (MapMyIndia) `route_eta` | Live road route polylines + ETAs (token via OAuth client-credentials) |
 
-**Why FastAPI over Flask/Express:** native async support for the live MapMyIndia calls, automatic request/response validation via Pydantic (matches the `EventInput` / `PredictionResult` contracts the frontend expects 1:1), and auto-generated `/docs` for free — useful both for frontend integration and for judges who want to poke the API directly.
+**Startup sequence** (everything loads once, into memory, before serving):
+1. Load processed parquet (`events_scored`, `junction_risk`, `zone_risk`, `corridor_risk`).
+2. Load the trained LightGBM artifact (`artifacts/duration_model.joblib`).
+3. Load the prebuilt NetworkX spillover graph (`spillover_graph.pkl`).
 
-**Startup sequence** (everything below loads once, into memory, before the server accepts traffic):
-1. Load `events.csv` → Pandas DataFrame
-2. Build `junction_risk.csv`, `zone_risk.csv`, `corridor_risk.csv` (or load precomputed)
-3. Load the trained LightGBM model (`duration_lgbm.pkl`)
-4. Build the NetworkX spillover graph (294 nodes, edges from Rules A/B/C — see [`DESIGN_SPEC.md`](DESIGN_SPEC.md) §7.3)
-5. Load `junction_road_distances.csv` (precomputed MapMyIndia Distance Matrix results)
+A live `POST /api/predict` touches none of these I/O paths — everything is resident, so the full six-engine pipeline runs in ~15 ms after a ~0.4 s startup load.
 
-A live request (`POST /api/predict`) touches none of these I/O paths — everything is already resident, so the full six-engine pipeline runs in well under a second (see the latency budget table in `DESIGN_SPEC.md` §13.3).
+> **Mappls note for this account:** only `route_eta` is licensed (not `route_adv`/`route_traffic`), and forward geocoding returns place-codes without coordinates — so hospital coordinates were sourced offline (see [Section 9](#9-emergency-hospital-network)). Map overlays are removed with `mappls.remove({ map, layer })`, not the object's `.remove()`.
 
 ---
 
-## 8. Frontend
+## 8. Frontend & Command-Centre Tabs
 
 | Layer | Technology | Role |
 |---|---|---|
-| Framework | **React 18 + TypeScript** | Strict typing across the `EventInput` → `PredictionResult` contract shared with the backend |
-| Build tool | Vite | Fast dev server + production bundling |
-| Routing | React Router v6 | Tab-based navigation (Overview / Simulator / Diversion / History) |
-| State | Zustand | Lightweight global state for the What-If simulator (shared across all tabs) |
-| Map | `react-leaflet` (Leaflet.js) | Dark `CartoDB dark_matter` tiles, four stacked layers (heatmap, concentric rings, junction markers, spillover edges) |
-| Charts | Recharts | KPI cards, duration histograms, feature-importance bar chart |
-| Styling | Tailwind CSS | Dark theme by default, command-centre aesthetic |
+| Framework | **React 19 + TypeScript** (strict) | Shared `EventInput` → `Prediction` contract with the backend (`types.ts`) |
+| Build tool | **Vite 8** | Dev server (`:5173`, proxies `/api` → `:8001`) + production bundle |
+| Styling | **Tailwind CSS v4** (`@tailwindcss/vite`) | Dark/light command-centre theme with CSS variables |
+| Maps | **Mappls Web Maps SDK** (vector v3.0) | Live road maps, route polylines, circle/marker overlays; SVG schematic fallback when unconfigured |
 | HTTP | Axios | REST calls to `/api/*` |
+| State | React `useState`/`useMemo` | Tab + simulation state in `App.tsx` (no external store) |
 
-### Tabs
+The dashboard is a single-page command centre with **six tabs**:
 
-1. **Overview** — fleet-wide KPIs, city heatmap of all active events weighted by ESI, top-10 risk junctions.
-2. **Event Simulator** *(the core demo screen)* — input panel (cause, junction, time slider, closure toggle) → prediction panel (ESI gauge, duration, radius, confidence) → live map → resource panel.
-3. **Diversion Planner** — blocked corridor, ranked alternate corridors with confidence scores, avoid-zones, barricade markers, route polylines.
-4. **Historical Intelligence** — searchable archive, similar-event cards, duration distribution histogram, confidence breakdown.
+1. **Simulator** — the core screen. Configure an event (cause, junction, time, day, closure, priority) and run the six-engine pipeline. The left panel is a stacking **Event Simulator**: each run is committed as a card, and **"+ Add another event"** lets you layer simultaneous incidents — affected junctions are unioned, ESI escalates, resources sum, and every epicentre is drawn on the map. Right panel: severity gauge, why-panel, resource plan, diversions, spillover timeline, similar events, feedback.
 
-A persistent **What-If bar** at the bottom spans all four tabs — changing time, closure status, or cause re-runs the entire six-engine pipeline and every panel updates live. This single interaction is the highest-impact demo moment: *"Move this procession from 6 PM to 2 PM — watch the officer count drop from 50 to 8."*
+2. **ASTRA Impact** — a side-by-side **with-vs-without** replay of the same incident, driven by the timeline scrubber. Both maps animate the jam spreading; on the "With ASTRA" side, a **green diversion corridor lights up at the junction currently being cleared and moves on as each junction's severity drops** (one corridor at a time, synced to the colours), illustrating how diversions dissipate the jam. All escape routes are **pre-fetched and cached the moment the simulation runs** (`routeCache.ts`), so playback is instant and ends with the timeline — it never loops. Headline deltas: delay, vehicles, fuel, time lost, economic loss.
+
+3. **Interventions** — a ranked **recommended action set** (the highest-leverage diversions/closures/holds) with the vehicles each would relieve.
+
+4. **What-If** — an interactive projection that scales the live prediction by eight conditions (severity, lanes, capacity, weather, time-of-day, day, volume, response). It is **data-driven**: junction colours come from the real spillover congestion × a normalized scenario load (×1.00 at defaults), so it reflects the data instead of skewing everything to "critical". Features: **click any junction for a drill-down** (projected risk band, congestion %, spillover ETA), a colour legend, a glow gradient, and an **"Animate spread"** reveal that lights junctions outward over time.
+
+5. **Emergency** — priority dispatch (see [Section 9](#9-emergency-hospital-network)): for **each incident** (so stacked multi-event simulations get a dispatch each), it picks the **nearest of 179 Bengaluru hospitals**, draws a **priority green corridor** from that hospital to the incident, places **officer markers at the signals held green** along the route, and shows the **dispatched officers/barricades on the hospital placemarker** (the same SVG icons as the simulator's resource panel — no emojis). Aggregate metrics: incidents, total distance, worst priority ETA, total time saved, officers·signals.
+
+6. **Overview** — fleet-wide KPIs, risk distribution, and the top risk junctions across the city.
 
 ---
 
-## 9. Data Storage
+## 9. Emergency Hospital Network
 
-**No database is used.** All historical data, risk tables, and the distance matrix are CSV files loaded into Pandas DataFrames at backend startup (~100 MB total in memory for 8,173 events + risk tables + distance matrix). This is a conscious choice for a dataset this size — see [Section 13](#13-aws-deployment) for the full reasoning.
+The Emergency tab dispatches from real hospitals, not an approximate offset point.
+
+- **179 Bengaluru hospitals** across 6 regions (Central / North / South / East / West / South-East) are stored in [`frontend/src/hospitalsData.ts`](frontend/src/hospitalsData.ts) with coordinates.
+- Coordinates were geocoded offline (Mappls geocoding on this account returns only place-codes, no lat/lng) via three passes — [`geocode_hospitals.py`](scripts/geocode_hospitals.py) → [`..._pass2.py`](scripts/geocode_hospitals_pass2.py) → [`..._pass3.py`](scripts/geocode_hospitals_pass3.py) — using **OpenStreetMap Nominatim + Photon** with Bangalore-bounds and per-region sanity checks, curated aliases for tricky names, and a deterministic region-centroid fallback for the rest.
+- **174 of 179 have exact coordinates**; the remaining 5 are anchored within their correct region. Every hospital is at least in the right part of the city, so "nearest to the incident" is always sensible.
+- At runtime the tab computes the nearest hospital **per incident** (haversine) — so a stacked multi-event simulation gets a hospital + corridor each — and shows it as a placemarker with the cross/officer/barricade SVG icons + distance, dispatching officers to the cleared corridor signals.
+
+To regenerate the dataset (one-off, polite rate-limited, ~5–10 min):
+
+```bash
+python scripts/geocode_hospitals.py        # pass 1: Nominatim + region fallback
+python scripts/geocode_hospitals_pass2.py  # pass 2: Photon/Nominatim lift for the fallbacks
+python scripts/geocode_hospitals_pass3.py  # pass 3: curated aliases + relaxed match for the long tail
+```
+
+---
+
+## 10. Data Storage
+
+**No database is used.** Historical data, risk tables, the trained model, and the spillover graph are loaded into memory at startup (parquet + joblib + pickle, regenerated by `scripts/build_all.py`). The only mutable state is the append-only **`data/feedback.jsonl`** (the learning loop).
 
 | File | Role | Refresh |
 |---|---|---|
-| `events.csv` | raw historical incidents (8,173 rows) | static, ships with the repo |
-| `junction_risk.csv` | per-junction incident count, avg duration, closure rate, normalized 0–100 risk score | rebuilt on the learning loop |
-| `zone_risk.csv` | fallback risk table when junction is missing (58% of rows) | rebuilt on the learning loop |
-| `corridor_risk.csv` | per-corridor incident frequency + avg duration — feeds the diversion engine | rebuilt on the learning loop |
-| `junction_road_distances.csv` | precomputed MapMyIndia road distances for junction pairs within 5 km Haversine | one-time, roads don't move |
-| `duration_lgbm.pkl` | trained model binary | retrained as new resolved events accumulate |
+| `data/raw/astra_events.csv` | raw historical incidents (8,173 rows) | static, ships with the repo |
+| `data/processed/events_scored.parquet` | cleaned + ESI-scored events | `scripts/03_compute_esi.py` |
+| `data/processed/junction_risk.parquet` | per-junction risk score (Bayesian shrinkage) | `scripts/02_build_memory.py` |
+| `data/processed/zone_risk.parquet`, `corridor_risk.parquet` | fallback + diversion risk tables | `scripts/02_build_memory.py` |
+| `data/processed/spillover_graph.pkl` | prebuilt NetworkX graph (294 nodes) | `scripts/05_build_graph.py` |
+| `artifacts/duration_model.joblib` | trained LightGBM model | `scripts/04_train_duration.py` |
+| `data/feedback.jsonl` | post-event feedback (the learning loop) | written live by `/api/feedback` |
 
-**The Learning Loop:** every event that closes re-enters `events.csv`, the three risk tables are re-aggregated, and the duration model is periodically retrained. This is ASTRA's literal answer to *"no post-event learning system"* — institutional memory that compounds instead of resetting to zero after every incident.
+**The Learning Loop:** every resolved event recorded via `/api/feedback` calibrates future duration predictions for that junction/cause — institutional memory that compounds instead of resetting after each incident.
 
-*If/when this moves beyond a hackathon, the natural next step is Postgres for the event log (so multiple backend instances can share state) with the risk tables and distance matrix still cached in memory or Redis — not because Pandas-in-memory breaks, but because horizontal scaling needs a shared source of truth.*
+*At production scale the natural next step is Postgres for the event log and a shared store for `feedback.jsonl` (DynamoDB / S3 / EFS) so multiple backend instances stay consistent — not because Pandas-in-memory breaks, but because horizontal scaling needs a shared source of truth.*
 
 ---
 
-## 10. API Reference
+## 11. API Reference
+
+Base path `/api`. Full request/response schemas are Pydantic models exposed at `/docs` (Swagger UI).
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/predict` | POST | Main prediction — accepts an `EventInput`, runs all six engines, returns a `PredictionResult` |
-| `/api/events/active` | GET | All currently active events, for the Overview heatmap |
-| `/api/junctions` | GET | All 294 junctions with coordinates and current risk scores |
-| `/api/corridors` | GET | All corridors with historical risk metrics |
-| `/api/similar?event_id=X` | GET | Similar historical events for a given event (or ad-hoc query) |
-| `/api/diversion/route` | POST | Fetches a diversion route polyline (calls the MapMyIndia Directions API) |
-| `/api/stats/overview` | GET | KPI numbers for the Overview tab |
+| `/api/health` | GET | Health check (ALB / ECS target-group probe) |
+| `/api/predict` | POST | Main prediction — `EventInput` → full six-engine `Prediction` |
+| `/api/feedback` | POST | Record a resolved event (drives the learning loop) |
+| `/api/feedback/summary` | GET | Aggregate feedback stats |
+| `/api/junctions` | GET | All 294 junctions with coordinates + risk scores |
+| `/api/corridors` | GET | Corridors with historical risk metrics |
 | `/api/events` | GET | Recent scored events (heatmap points) |
-| `/api/mappls/status` | GET | Whether MapMyIndia credentials are configured |
+| `/api/stats/overview` | GET | KPI numbers for the Overview tab |
+| `/api/mappls/status` | GET | Whether Mappls credentials are configured |
 | `/api/mappls/token` | GET | Mappls access token (for loading the map SDK) |
-| `/api/mappls/directions` | POST | Road route + polyline between two points |
+| `/api/mappls/directions` | POST | Road route + polyline between two points (`route_eta`) |
 | `/api/mappls/matrix` | POST | Road distance matrix |
-| `/api/health` | GET | Health check (ALB target group probe) |
 
-Full request/response schemas are defined as Pydantic models in the backend and exposed automatically at `/docs` (Swagger UI) once the server is running.
-
-**Core contract:**
+**Core contract** (`frontend/src/types.ts` ↔ `astra/api/schemas.py`):
 
 ```typescript
 interface EventInput {
-  cause: EventCause            // one of 12 enum values
-  junction: string | null
-  latitude: number
-  longitude: number
-  hour: number                 // 0–23
-  weekday: number               // 0–6
-  roadClosure: boolean
-  durationOverride?: number     // optional officer override of the ML prediction
+  event_cause: string;            // one of 12 causes
+  junction?: string | null;
+  zone?: string | null;
+  hour: number;                   // 0–23
+  weekday: number;                // 0–6
+  road_closure: boolean;
+  priority_high: boolean;
+  duration_override?: number | null;
 }
 
-interface PredictionResult {
-  esi: number                   // 0–100
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
-  durationHours: number
-  impactRadiusKm: number
-  confidence: number            // 0–100
-  similarEventCount: number
-  affectedJunctions: AffectedJunction[]
-  resources: ResourcePlan
-  diversions: DiversionPlan[]
+interface Prediction {
+  esi: number;                    // 0–100
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  duration_hours: number;
+  impact_radius_km: number;
+  confidence: number;
+  affected_junctions: AffectedJunction[];
+  resources: Resources;
+  diversions: { recommended: DiversionCorridor[]; /* … */ };
+  similar: { matches: SimilarMatch[]; /* … */ };
 }
 ```
 
 ---
 
-## 11. Project Structure
+## 12. Project Structure
 
 ```
 Flipkart_gridlock_2.0/
@@ -335,218 +349,248 @@ Flipkart_gridlock_2.0/
 │   ├── geo.py                       # vectorized Haversine
 │   ├── pipeline.py                  # AstraPipeline — runs every engine for one event
 │   ├── data/                        # load.py · clean.py · features.py
-│   ├── memory/                      # risk_tables.py · lookup.py (RiskLookup cascade)
+│   ├── memory/                      # risk_tables.py · lookup.py · feedback.py
 │   ├── scoring/esi.py               # Event Severity Index
 │   ├── models/duration_model.py     # LightGBM duration model (the only ML)
-│   ├── engines/
-│   │   ├── impact_radius.py         # congestion-spread formula + affected junctions
-│   │   ├── spillover.py             # NetworkX graph build + BFS decay propagation
-│   │   ├── similar_events.py        # weighted k-NN + confidence
-│   │   ├── diversion.py             # 3-layer corridor scoring
-│   │   └── resource_planner.py      # officer/barricade/patrol formulas
-│   ├── integrations/mappls.py       # MapMyIndia token + directions + matrix
+│   ├── engines/                     # impact_radius · spillover · similar_events · diversion · resource_planner
+│   ├── integrations/mappls.py       # Mappls token + route_eta + matrix
 │   └── api/                         # main.py (FastAPI) · schemas.py (pydantic)
-├── scripts/                         # 01_preprocess … 05_build_graph, build_all.py
+├── scripts/
+│   ├── 01_preprocess … 05_build_graph.py · build_all.py
+│   └── geocode_hospitals.py · geocode_hospitals_pass2.py   # hospital coordinates
 ├── data/
 │   ├── raw/astra_events.csv         # the dataset (committed)
-│   ├── interim/  processed/         # regenerated by the pipeline (gitignored)
+│   ├── processed/  interim/         # regenerated by build_all.py (gitignored)
+│   └── feedback.jsonl               # learning-loop state (gitignored)
 ├── artifacts/                       # trained model + metrics (gitignored)
-├── tests/                           # pytest — one suite per engine (29 tests)
-├── frontend/                        # React + TypeScript + Vite + Tailwind
-│   ├── src/{App.tsx,api.ts,types.ts}
-│   └── src/components/{EventForm,PredictionPanel,MapView,ResourcePanel,DiversionPanel,SimilarPanel,Overview}.tsx
-├── Dockerfile · frontend/Dockerfile · docker-compose.yml
-├── DESIGN_SPEC.md                   # full mathematical spec — every formula, table, derivation
-├── docs/DEPLOYMENT.md               # local · docker · AWS
-└── README.md
+├── tests/                           # pytest — one suite per engine
+├── frontend/                        # React 19 + TypeScript + Vite 8 + Tailwind v4
+│   ├── src/{App.tsx,api.ts,types.ts,mapsdk.ts,combine.ts,routeCache.ts,hospitalsData.ts}
+│   └── src/components/
+│       ├── EventForm · PredictionPanel · WhyPanel · ResourcePanel · DiversionPanel
+│       ├── SpilloverTimeline · SimilarPanel · FeedbackForm · MapView · Overview · icons
+│       └── CompareView · InterventionView · WhatIfView · EmergencyView
+├── Dockerfile · frontend/Dockerfile · frontend/nginx.conf · docker-compose.yml
+├── DESIGN_SPEC.md · docs/DEPLOYMENT.md · README.md
 ```
 
 ---
 
-## 12. Local Setup
+## 13. Local Setup
 
 ### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- (Optional) a MapMyIndia API key for live road-distance/diversion features — everything else runs without it
+- Python 3.12+ · Node.js 20+
+- (Optional) Mappls credentials for the live vector map + routing — everything else runs without them (SVG fallback).
 
 ### Backend
-
 ```bash
 pip install -r requirements.txt
-python scripts/build_all.py          # one-time: regenerates data/processed + artifacts
-uvicorn astra.api.main:app --reload --port 8000
+python scripts/build_all.py                     # one-time: builds data/processed + artifacts
+uvicorn astra.api.main:app --reload --port 8001 # dev port — matches the Vite proxy
 ```
-
-Verify: `http://localhost:8000/docs` shows the interactive API explorer, and
-`http://localhost:8000/api/health` returns `{"status":"ok"}`.
+Verify: `http://localhost:8001/docs` (Swagger) and `http://localhost:8001/api/health` → `{"status":"ok"}`.
 
 ### Frontend
-
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev                                      # http://localhost:5173, proxies /api → :8001
 ```
 
-Open `http://localhost:5173`. The dev server proxies `/api/*` to `http://localhost:8000`.
+### Mappls (optional)
+```bash
+cp .env.example .env     # set MAPMYINDIA_CLIENT_ID / MAPMYINDIA_CLIENT_SECRET
+```
 
 ### Tests
+```bash
+python -m pytest -q
+```
+
+### Docker (single host)
+```bash
+docker compose up --build      # backend :8000, frontend :8080 (nginx proxies /api → backend:8000)
+```
+
+> The Docker backend serves on **:8000** (baked image runs `build_all.py` at build time); local dev uses **:8001** to match `vite.config.ts`.
+
+---
+
+## 14. AWS Deployment Plan
+
+ASTRA splits cleanly into a **static SPA** and a **stateless containerized API**, which maps directly onto a standard, low-cost AWS topology. Two paths below: a 30-minute demo path and a production path.
+
+```mermaid
+flowchart TB
+    User([User / Officer]) --> CF[CloudFront + ACM HTTPS]
+    CF -->|default| S3[(S3<br/>React build)]
+    CF -->|/api/*| ALB[Application Load Balancer]
+    ALB --> ECS[ECS Fargate service<br/>FastAPI container x N]
+    ECS --> ECR[(ECR image)]
+    ECS -->|secrets| SSM[SSM Parameter Store<br/>Mappls creds]
+    ECS --> CW[CloudWatch Logs/Alarms]
+    ECS -.->|route_eta| MMI[Mappls API]
+```
+
+### 14.1 Component plan
+
+| Layer | Service | Choice & why |
+|---|---|---|
+| Static frontend | **S3 + CloudFront** | `frontend/dist` is pure static assets; CloudFront gives one HTTPS domain that serves the SPA *and* proxies `/api/*` to the backend, so the app keeps calling relative `/api` with no code change. Origin Access Control keeps the bucket private. |
+| TLS | **ACM** | Free certificate on the CloudFront distribution (must be in `us-east-1`). |
+| Backend image | **ECR** | Private registry for the `Dockerfile` image (`python:3.12-slim`, `build_all.py` baked in, serves `:8000`). |
+| Backend runtime | **ECS Fargate** (recommended) *or* **EC2** | Fargate = no servers to patch, scales on CPU, health-checked by the ALB. The API is **stateless** (model/graph/tables in memory), so it scales horizontally cleanly. EC2 + `docker compose` is the cheaper/simpler alternative for a demo. |
+| Routing / LB | **ALB** | Path-routes `/api/*` to the Fargate tasks, health-check `/api/health`. |
+| Secrets | **SSM Parameter Store** (SecureString) | `MAPMYINDIA_CLIENT_ID/SECRET` injected as container env via the task definition — never baked into the image. |
+| Observability | **CloudWatch** | Container logs + an alarm on 5xx / unhealthy hosts. |
+| Shared state (optional) | **EFS or DynamoDB** | Only needed if you run >1 task and want a shared `feedback.jsonl` (see [Section 10](#10-data-storage)). Not required for the demo. |
+
+### 14.2 Fast path — single EC2 (demo, ~30 min)
+
+One `t3.medium` (2 vCPU / 4 GB) runs both containers via compose.
 
 ```bash
-python -m pytest -q                  # 29 tests across every engine + the API
+# Amazon Linux 2023 / Ubuntu 22.04
+sudo yum install -y docker git            # or: apt install
+sudo systemctl enable --now docker
+sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+  -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose
+
+git clone <repo-url> && cd Flipkart_gridlock_2.0
+printf 'MAPMYINDIA_CLIENT_ID=...\nMAPMYINDIA_CLIENT_SECRET=...\n' > .env   # optional
+docker compose up --build -d              # frontend :8080, backend :8000
+```
+Open security-group port **8080** (and 22 for SSH from your IP). Dashboard: `http://<ec2-public-ip>:8080`. Put it behind an ALB + ACM cert for HTTPS when ready.
+
+### 14.3 Production path — S3/CloudFront + ECR/Fargate/ALB
+
+**1 — Frontend → S3 + CloudFront**
+```bash
+cd frontend && npm ci && npm run build
+aws s3 mb s3://astra-frontend-<acct>
+aws s3 sync dist/ s3://astra-frontend-<acct>/ --delete
+# CloudFront: Origin A = S3 (OAC, default behaviour, SPA error mapping 403/404 → /index.html)
+#             Origin B = ALB (behaviour path `/api/*`, forward all headers, no caching)
+# Attach an ACM cert (us-east-1) + your domain.
 ```
 
-### MapMyIndia (optional)
-
-Everything runs on Haversine without credentials. To enable the live Mappls
-vector map + real road routing, `cp .env.example .env` and fill in
-`MAPMYINDIA_CLIENT_ID` / `MAPMYINDIA_CLIENT_SECRET`. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
-
----
-
-## 13. AWS Deployment
-
-### 13.1 Architecture
-
-```
-Browser
-   │
-   ▼
-CloudFront (CDN, HTTPS)
-   ├── default origin → S3 bucket (React production build)
-   └── /api/* → Application Load Balancer
-                    │
-                    ▼
-              EC2 t3.medium
-                    │
-              FastAPI + Uvicorn
-              (LightGBM model, risk tables, NetworkX graph — all in memory)
+**2 — Backend image → ECR**
+```bash
+aws ecr create-repository --repository-name astra-backend
+aws ecr get-login-password | docker login --username AWS --password-stdin <acct>.dkr.ecr.<region>.amazonaws.com
+docker build -t astra-backend .
+docker tag astra-backend:latest <acct>.dkr.ecr.<region>.amazonaws.com/astra-backend:latest
+docker push <acct>.dkr.ecr.<region>.amazonaws.com/astra-backend:latest
 ```
 
-### 13.2 Why this stack
+**3 — Secrets → SSM**
+```bash
+aws ssm put-parameter --name /astra/MAPMYINDIA_CLIENT_ID     --type SecureString --value '...'
+aws ssm put-parameter --name /astra/MAPMYINDIA_CLIENT_SECRET --type SecureString --value '...'
+```
 
-| Service | Role | Why |
+**4 — ECS Fargate service**
+- Task definition: container = the ECR image, port **8000**, 0.5 vCPU / 1 GB (the in-memory model+graph+tables are ~150 MB), `secrets` pulling the two SSM parameters into env, log driver `awslogs`.
+- Service: desired count 1–2 behind the ALB target group (port 8000, health check `/api/health`, healthy threshold 2). Enable CPU target-tracking autoscaling (e.g. 60%).
+
+**5 — Wire it up & verify**
+- ALB listener `/api/*` → the Fargate target group; CloudFront `/api/*` behaviour → the ALB.
+- Open the CloudFront domain, run an event in the Simulator, confirm a `Prediction` returns and the Emergency map routes.
+
+### 14.4 Statelessness & scaling notes
+- The API holds no per-request state — any task can serve any request, so scaling out is just raising the desired count.
+- The one caveat is `data/feedback.jsonl`. For a single task it's fine on the container's ephemeral disk (lost on redeploy). For multiple tasks or durable feedback, mount **EFS** at `data/` or move feedback to **DynamoDB/S3** (small adapter in `astra/memory/feedback.py`).
+- Hospital data and the trained model ship **inside the image** — no runtime geocoding or external data dependency on the hot path.
+
+### 14.5 Security checklist
+- S3 bucket private; served only via CloudFront **OAC**. ACM/TLS on CloudFront; HTTP→HTTPS redirect.
+- ALB security group allows only CloudFront; ECS tasks allow only the ALB on 8000.
+- Mappls creds in **SSM SecureString**, never in the image or git (`.env` is gitignored; rotate if ever committed).
+- Least-privilege task role (ECR pull, SSM get, CloudWatch logs).
+
+### 14.6 Cost estimate
+
+| Scenario | Services | Approx |
 |---|---|---|
-| **S3** | Hosts the React production build (`npm run build` output) | Effectively free at this scale; no server needed for static assets |
-| **CloudFront** | CDN + HTTPS + routing between S3 and the ALB | Single domain serves both the SPA and the API |
-| **ALB** | Routes `/api/*` to EC2, health-checks `/api/health` | Enables future horizontal scaling without touching the frontend |
-| **EC2 (t3.medium)** | Runs the FastAPI backend as a single process | 2 vCPU / 4 GB RAM comfortably holds the model + graph + tables (~100 MB) with room for inference load |
-| **No RDS** | — | The dataset fits in memory; a database adds cost and latency with no benefit at this scale (see [Section 9](#9-data-storage)) |
-
-### 13.3 Deployment steps
-
-1. **Build the frontend:** `npm run build` inside `frontend/` → `dist/`.
-2. **Upload to S3:** `aws s3 sync dist/ s3://astra-frontend-bucket/`.
-3. **Launch EC2:** Ubuntu 22.04, `t3.medium`, security group open on 22 (SSH, your IP) and 8000 (API, ALB only).
-4. **Provision the backend:**
-   ```bash
-   ssh -i key.pem ubuntu@<ec2-ip>
-   sudo apt update && sudo apt install -y python3 python3-venv git
-   git clone https://github.com/mpatra193/Flipkart_gridlock_2.0.git && cd Flipkart_gridlock_2.0
-   python3 -m venv .venv && source .venv/bin/activate
-   pip install -r requirements.txt
-   python scripts/build_all.py
-   ```
-5. **Run persistently with systemd** (or `pm2`/`supervisor`):
-   ```bash
-   uvicorn astra.api.main:app --host 0.0.0.0 --port 8000
-   ```
-
-   For the simplest path, `docker compose up --build -d` runs both backend and
-   frontend on one instance — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
-6. **Configure the ALB:** target group → EC2 port 8000, health check path `/api/health`.
-7. **Configure CloudFront:** Origin 1 = S3 (default behaviour), Origin 2 = ALB (path pattern `/api/*`).
-8. **Verify:** load the CloudFront domain, submit a test event in the Simulator tab, confirm a `PredictionResult` returns.
-
-### 13.4 Cost estimate (1 week, competition duration)
-
-| Service | Cost |
-|---|---|
-| EC2 t3.medium | ~$2.50 |
-| S3 | ~$0.02 |
-| CloudFront | ~$0.10 |
-| ALB | ~$0.50 |
-| **Total** | **~$3.12** |
-
-### 13.5 Fast path for a live demo
-
-If the full CloudFront/ALB setup is too much overhead before a demo slot, run everything on a single EC2 instance: FastAPI serves both `/api/*` and the React build as static files from the same Uvicorn process. No HTTPS, no CDN — but it's a 30-minute setup instead of ~2 hours, and is a perfectly reasonable choice for a live judging demo.
+| **Demo, 1 week** (single EC2) | t3.medium + S3 + CloudFront | **~$3–4** |
+| **Production, 1 month** (low traffic) | Fargate 1×0.5vCPU (~$15) + ALB (~$16) + S3/CloudFront (~$1) | **~$32/mo** |
 
 ---
 
-## 14. Build Roadmap
+## 15. CI/CD
 
-| Day | Focus |
-|---|---|
-| 1 | Data cleaning, feature engineering, historical memory tables (`junction_risk.csv`, `zone_risk.csv`, `corridor_risk.csv`), ESI formula implementation |
-| 2 | Train LightGBM duration model, implement Similar Event Engine + confidence scoring |
-| 3 | Build the NetworkX spillover graph, impact radius engine, diversion engine |
-| 4 | Dashboard UI — Simulator tab first, then Overview/Diversion/History tabs, wire the What-If bar |
-| 5 | Polish, deploy to AWS, rehearse the demo script, write the honest limitations slide |
+A two-lane GitHub Actions pipeline (suggested `.github/workflows`):
+
+**Backend lane** — on push to `main` touching `astra/**`, `scripts/**`, `requirements.txt`, `Dockerfile`:
+1. `pip install -r requirements.txt && python -m pytest -q`
+2. `docker build` → push to ECR (tag = git SHA)
+3. `aws ecs update-service --force-new-deployment` (rolling deploy, ALB drains old tasks)
+
+**Frontend lane** — on push touching `frontend/**`:
+1. `npm ci && npx tsc --noEmit && npm run build`
+2. `aws s3 sync dist/ s3://astra-frontend-<acct>/ --delete`
+3. `aws cloudfront create-invalidation --paths "/*"`
+
+Gate deploys on `pytest` (backend) and `tsc --noEmit` (frontend) so a red build never ships.
 
 ---
 
-## 15. Current Implementation Status
+## 16. Current Implementation Status
 
-The full system is **implemented and runnable end-to-end**, built and committed phase by phase (see the git log). Every engine has unit tests (29 passing) and the whole pipeline is verified over live HTTP.
+The full system is **implemented and runnable end-to-end**, built phase by phase (see git log). Every engine has unit tests and the pipeline is verified over live HTTP.
 
 | Layer | Status |
 |---|---|
 | Data preprocessing + feature engineering | ✅ `astra/data/` · `scripts/01_preprocess.py` |
 | Junction / zone / corridor risk tables (Bayesian shrinkage) | ✅ `astra/memory/` · `scripts/02_build_memory.py` |
 | ESI scoring (5-component, cascade fallback) | ✅ `astra/scoring/esi.py` |
-| Duration model (LightGBM risk-aware: p10/p50/p90 quantiles + long-event classifier) | ✅ `astra/models/` · `scripts/04_train_duration.py` |
-| Impact radius engine | ✅ `astra/engines/impact_radius.py` |
-| Spillover propagation graph (NetworkX, 294 nodes) | ✅ `astra/engines/spillover.py` |
-| Similar event engine (weighted k-NN + confidence) | ✅ `astra/engines/similar_events.py` |
-| Diversion engine (3-layer scoring) | ✅ `astra/engines/diversion.py` |
-| Resource planner | ✅ `astra/engines/resource_planner.py` |
-| Pipeline orchestration + FastAPI backend | ✅ `astra/pipeline.py` · `astra/api/` |
-| MapMyIndia integration (token/directions/matrix) | ✅ `astra/integrations/mappls.py` |
-| React + TypeScript dashboard | ✅ `frontend/` |
+| Duration model (LightGBM p10/p50/p90 + long-event classifier) | ✅ `astra/models/` · `scripts/04_train_duration.py` |
+| Impact radius · Spillover graph · Similar events · Diversion · Resource planner | ✅ `astra/engines/` |
+| Pipeline orchestration + FastAPI backend + learning loop | ✅ `astra/pipeline.py` · `astra/api/` |
+| Mappls integration (token / route_eta / matrix) | ✅ `astra/integrations/mappls.py` |
+| React 19 dashboard — 6 tabs | ✅ `frontend/` |
+| Multi-event stacking (Simulator) | ✅ `App.tsx` · `combine.ts` · `EventForm.tsx` |
+| With-vs-without replay + sequential green corridors (ASTRA Impact) | ✅ `CompareView.tsx` |
+| What-If: data-driven projection + per-junction drill-down + animated spread | ✅ `WhatIfView.tsx` |
+| Emergency dispatch + 179-hospital network (174 exact coords) | ✅ `EmergencyView.tsx` · `hospitalsData.ts` · `scripts/geocode_hospitals*.py` |
 | Docker + AWS deployment | ✅ `Dockerfile` · `docker-compose.yml` · `docs/DEPLOYMENT.md` |
 
-**Measured model performance** (newest-20% time-split): the risk-aware duration
-pipeline gives Median AE 0.67 h, p10–p90 interval hit-rate 79%, and a long-event
-(>6 h) classifier with **ROC-AUC 0.87** — the strongest learned signal. Severity is
-driven by the planning (p90) duration and confidence by the p10–p90 band width, so
-the system differentiates (waterlogging+closure+peak → CRITICAL; 3 AM breakdown →
-LOW) instead of clustering low. Full pipeline latency: ~15 ms per event after a
-~0.4 s startup load.
+**Measured performance:** Median AE 0.67 h, p10–p90 hit-rate 79%, long-event ROC-AUC 0.87; full pipeline ~15 ms/event after ~0.4 s startup.
 
 ---
 
-## 16. Honest Limitations
-
-Presented proactively — a system that knows its own boundaries is more trustworthy than one that claims to do everything.
+## 17. Honest Limitations
 
 | ASTRA Can | ASTRA Cannot |
 |---|---|
-| Predict event duration from historical patterns (ML, with a measured MAE) | Predict real-time traffic volume — there is no live sensor feed |
-| Estimate congestion spread using a documented, inspectable formula | Give turn-by-turn navigation — only junction-level corridor recommendations |
-| Identify which junctions are at risk via road-network propagation, not a circle | Guarantee a diversion corridor stays clear — new events can appear anytime |
-| Quantify resource needs (officers, barricades, vehicles) per junction | Account for exact lane-level road capacity — not present in the dataset |
-| Learn from every resolved event via the historical memory tables | Replace an experienced officer's judgement — the officer always has final say |
+| Predict event duration from historical patterns (ML, with measured MAE) | Predict real-time traffic volume — there is no live sensor feed |
+| Estimate congestion spread via a documented, inspectable formula | Give turn-by-turn navigation — only junction-level corridor recommendations |
+| Identify at-risk junctions via road-network propagation, not a circle | Guarantee a diversion corridor stays clear — new events can appear anytime |
+| Quantify resource needs per junction and dispatch from the nearest hospital | Account for exact lane-level road capacity — not in the dataset |
+| Route a priority green corridor with real hospital coordinates | Pinpoint all 179 hospitals — 5 are region-anchored, not exact |
+| Learn from every resolved event via the feedback loop | Replace an officer's judgement — the officer always has final say |
 
 ---
 
-## 17. Future Scope
+## 18. Future Scope
 
-- Live sensor/GPS feed integration to replace the static heatmap with real-time congestion data.
-- Postgres-backed event log once multiple backend instances need to share state (see [Section 9](#9-data-storage)).
-- Mobile-first companion view for officers in the field, not just the command-centre dashboard.
-- Automated retraining pipeline for the duration model as new resolved events accumulate (the Learning Loop, made continuous instead of manual).
-- Expansion beyond Bangalore — the formulas are calibrated against this dataset's specific traffic patterns and would need recalibration per city.
+- Live sensor/GPS feed to replace static heatmaps with real-time congestion.
+- Postgres event log + shared feedback store once multiple backend instances need consistency ([Section 10](#10-data-storage)).
+- Lift the remaining 5 region-anchored hospitals to exact coordinates (paid geocoder / manual curation).
+- Mobile-first companion view for field officers.
+- Continuous automated retraining of the duration model as resolved events accumulate.
+- Per-city recalibration — the formulas are tuned to Bangalore's patterns.
 
 ---
 
-## 18. Team
+## 19. Team
 
 *Built for Flipkart Grid 6.0 — Event-Driven Congestion (Planned & Unplanned) track.*
 
-*(Add team member names, roles, and contact links here.)*
+| Member | |
+|---|---|
+| **Puneet** | Team member |
+| **Monalisha** | Team member |
 
 ---
 

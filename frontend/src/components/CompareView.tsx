@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { mapplsDirections, mapplsStatus } from "../api";
+import { mapplsStatus } from "../api";
+import { cachedDirections } from "../routeCache";
 import { loadSdk, waitFor } from "../mapsdk";
 import type { AffectedJunction, Prediction } from "../types";
 
@@ -36,16 +37,21 @@ function colorWith(a: AffectedJunction, t: number): string | null {
 function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: Prediction; clock: number; mode: "without" | "with" }) {
   const mapRef = useRef<any>(null);
   const circles = useRef<Map<string, { c: any; color: string }>>(new Map());
-  const lines = useRef<Map<string, any>>(new Map());
+  const lineRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [routes, setRoutes] = useState<Record<string, { lat: number; lng: number }[]>>({});
+  const seqJammed = useRef<AffectedJunction[]>([]);
 
   const clearOne = (o: any) => {
+    if (!o) return;
+    const M = (window as any).mappls;
     try {
-      o.remove ? o.remove() : mapRef.current?.removeLayer?.(o);
-    } catch {
-      /* ignore */
-    }
+      if (M && typeof M.remove === "function") { M.remove({ map: mapRef.current, layer: o }); return; }
+    } catch { /* fall through */ }
+    try {
+      if (typeof o.remove === "function") { o.remove(); return; }
+    } catch { /* fall through */ }
+    try { mapRef.current?.removeLayer?.(o); } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -78,9 +84,10 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
     const map = mapRef.current;
     circles.current.forEach((v) => clearOne(v.c));
     circles.current = new Map();
-    lines.current.forEach((l) => clearOne(l));
-    lines.current = new Map();
+    clearOne(lineRef.current);
+    lineRef.current = null;
     setRoutes({});
+    seqJammed.current = [];
     map.setCenter?.({ lat: prediction.event.latitude, lng: prediction.event.longitude });
     map.setZoom?.(12.5);
     setTimeout(() => map.resize?.(), 150);
@@ -88,11 +95,12 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
     if (mode === "with") {
       const jammed = prediction.affected_junctions
         .filter((a) => a.escape && (a.risk === "HIGH" || a.risk === "MEDIUM") && (a.eta_min ?? 0) > 0.5)
-        .sort((x, y) => (y.congestion ?? 0) - (x.congestion ?? 0))
-        .slice(0, 2);
+        .sort((x, y) => (x.eta_min ?? 0) - (y.eta_min ?? 0))
+        .slice(0, 12);
+      seqJammed.current = jammed;
       jammed.forEach(async (a) => {
         try {
-          const res = await mapplsDirections(`${a.lat},${a.lon}`, `${a.escape!.to_lat},${a.escape!.to_lon}`);
+          const res = await cachedDirections(`${a.lat},${a.lon}`, `${a.escape!.to_lat},${a.escape!.to_lon}`);
           if (res.path && res.path.length >= 2) {
             setRoutes((prev) => ({ ...prev, [a.junction]: res.path }));
           }
@@ -112,8 +120,6 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
     if (clock === 0) {
       circles.current.forEach((v) => clearOne(v.c));
       circles.current = new Map();
-      lines.current.forEach((l) => clearOne(l));
-      lines.current = new Map();
     }
 
     for (const a of aff) {
@@ -143,26 +149,32 @@ function CompareMap({ id, prediction, clock, mode }: { id: string; prediction: P
         /* ignore */
       }
     }
+  }, [clock, ready, prediction, mode]);
 
-    if (mode === "with") {
-      for (const a of aff) {
-        const path = routes[a.junction];
-        const reached = path && clock > 0.5 && reachedSince(a, clock) >= 0;
-        const has = lines.current.has(a.junction);
-        if (reached && !has) {
-          try {
-            const ln = new M.Polyline({ map, path, strokeColor: "#22c55e", strokeOpacity: 0.9, strokeWeight: 3, fitbounds: false });
-            lines.current.set(a.junction, ln);
-          } catch {
-            /* ignore */
-          }
-        } else if (!reached && has) {
-          clearOne(lines.current.get(a.junction));
-          lines.current.delete(a.junction);
-        }
-      }
+  useEffect(() => {
+    const map = mapRef.current;
+    const M = (window as any).mappls;
+    if (!map || !M || !ready || mode !== "with") return;
+    clearOne(lineRef.current);
+    lineRef.current = null;
+    if (clock <= 0) return;
+
+    let active: AffectedJunction | null = null;
+    for (const a of seqJammed.current) {
+      if (!routes[a.junction]) continue;
+      if (reachedSince(a, clock) < 0) continue;
+      if (colorWith(a, clock) === "#22c55e") continue;
+      if (!active || (a.eta_min ?? 0) < (active.eta_min ?? 0)) active = a;
     }
-  }, [clock, ready, prediction, mode, routes]);
+    if (!active) return;
+    const path = routes[active.junction];
+    if (!path) return;
+    try {
+      lineRef.current = new M.Polyline({ map, path, strokeColor: "#22c55e", strokeOpacity: 0.95, strokeWeight: 4, fitbounds: false });
+    } catch {
+      /* ignore */
+    }
+  }, [clock, routes, ready, mode, prediction]);
 
   return <div id={id} className="absolute inset-0" style={{ width: "100%", height: "100%" }} />;
 }
