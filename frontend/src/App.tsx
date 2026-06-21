@@ -9,7 +9,7 @@ import ResourcePanel from "./components/ResourcePanel";
 import DiversionPanel from "./components/DiversionPanel";
 import SpilloverTimeline from "./components/SpilloverTimeline";
 import SimilarPanel from "./components/SimilarPanel";
-import FeedbackForm from "./components/FeedbackForm";
+import PostEventView from "./components/PostEventView";
 import MapView from "./components/MapView";
 import OverviewView from "./components/Overview";
 import CompareView from "./components/CompareView";
@@ -43,7 +43,7 @@ function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"simulator" | "compare" | "interventions" | "whatif" | "emergency" | "overview">("simulator");
+  const [tab, setTab] = useState<"simulator" | "compare" | "interventions" | "whatif" | "emergency" | "postevent" | "overview">("simulator");
   const [junctions, setJunctions] = useState<Junction[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [committed, setCommitted] = useState<{ input: EventInput; pred: Prediction }[]>([]);
@@ -125,9 +125,9 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           <nav className="flex items-end gap-1">
-            {(["simulator", "compare", "interventions", "whatif", "emergency", "overview"] as const).map((t) => {
+            {(["simulator", "compare", "interventions", "whatif", "emergency", "postevent", "overview"] as const).map((t) => {
               const active = tab === t;
-              const labels = { simulator: "Simulator", compare: "ASTRA Impact", interventions: "Interventions", whatif: "What-If", emergency: "Emergency", overview: "Overview" } as const;
+              const labels = { simulator: "Simulator", compare: "ASTRA Impact", interventions: "Interventions", whatif: "What-If", emergency: "Emergency", postevent: "Post-Event", overview: "Overview" } as const;
               return (
                 <button
                   key={t}
@@ -194,7 +194,6 @@ export default function App() {
                 <DiversionPanel d={prediction.diversions} />
                 <SpilloverTimeline p={prediction} />
                 <SimilarPanel s={prediction.similar} />
-                <FeedbackForm p={prediction} onSaved={refreshLast} />
               </>
             ) : (
               <div className="glass p-8 text-center">
@@ -226,6 +225,11 @@ export default function App() {
       {tab === "emergency" && (
         <div className="flex-1 p-4 overflow-hidden">
           <EmergencyView prediction={prediction} junctions={junctions} />
+        </div>
+      )}
+      {tab === "postevent" && (
+        <div className="flex-1 p-4 overflow-hidden">
+          <PostEventView prediction={prediction} onSaved={refreshLast} />
         </div>
       )}
       {tab === "overview" && (
