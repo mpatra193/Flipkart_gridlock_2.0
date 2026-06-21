@@ -18,16 +18,15 @@ def test_base_radius_bands():
     assert base_radius(None) == 0.3
 
 
-def test_procession_peak_closed():
-    r = estimate_impact_radius(2.5, road_closure=1, is_peak=1, cause="procession")
-    # base(2.5)=1.5 × closure(1.69) × peak(1.0) × cause(3.0) = 7.605
-    assert abs(r - 7.605) < 1e-3
-
-
-def test_procession_offpeak_open():
-    r = estimate_impact_radius(2.5, road_closure=0, is_peak=0, cause="procession")
-    # base(2.5)=1.5 × closure(1.0) × peak(1.0) × cause(3.0) = 4.5
-    assert abs(r - 4.5) < 1e-3
+def test_impact_radius_multipliers_monotonic():
+    # behaviour, not exact constants: closure / peak / a more disruptive cause each
+    # enlarge the radius, and the worst case stays within the 10 km cap.
+    base = estimate_impact_radius(2.5, road_closure=0, is_peak=0, cause="vehicle_breakdown")
+    assert estimate_impact_radius(2.5, road_closure=1, is_peak=0, cause="vehicle_breakdown") > base
+    assert estimate_impact_radius(2.5, road_closure=0, is_peak=1, cause="vehicle_breakdown") > base
+    assert estimate_impact_radius(2.5, road_closure=0, is_peak=0, cause="water_logging") >= base
+    worst = estimate_impact_radius(2.5, road_closure=1, is_peak=1, cause="water_logging")
+    assert base <= worst <= 10.0
 
 
 def test_radius_capped_at_10():

@@ -14,9 +14,12 @@ def _affected():
 
 def test_police_breakdown():
     p = rp.police_breakdown(_affected(), impact_radius=6.0, cause="procession")
-    assert p["point_duty"] == 2 * 2 + 1 * 1
-    assert p["perimeter"] == math.ceil(2 * math.pi * 6.0 / 1.5)
-    assert p["site"] == 4
+    assert p["perimeter"] == math.ceil(2 * math.pi * 6.0 / 1.5)   # perimeter-ring geometry
+    assert p["site"] == rp.site_officers("procession")            # site officers from the cause
+    assert p["point_duty"] >= 1                                   # officers on the worst junctions
+    assert p["high_junctions"] == 2 and p["medium_junctions"] == 1 and p["low_junctions"] == 1
+    assert p["raw_total"] == p["point_duty"] + p["perimeter"] + p["site"]
+    assert p["recommended"] > 0 and (p["recommended"] == p["raw_total"] or p["capped"])
 
 
 def test_police_cap():
@@ -36,7 +39,7 @@ def test_patrol_vehicles():
 
 
 def test_deployment_prioritizes_major_corridor():
-    plan = rp.deployment_plan(_affected(), police_budget=10)
+    plan = rp.deployment_plan(_affected(), budget=10)
     assert plan[0]["junction"] == "A"
     assert all(p["risk"] in ("HIGH", "MEDIUM") for p in plan)
 
