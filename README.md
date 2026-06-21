@@ -118,9 +118,13 @@ flowchart TB
         DIV["Diversion Engine<br/>corridors + routes"]
     end
 
-    RES["④ Resource Planner<br/>police · barricades · patrol · sites (MILP)"]
+    subgraph RP["④ RESOURCE PLANNER"]
+        RES["Resource Allocation<br/>police · barricades · patrol · sites (MILP)"]
+    end
 
-    TABS["⑤ COMMAND CENTRE UI — 7 tabs<br/>Simulator · ASTRA Impact · Interventions · What-If<br/>Emergency · Post-Event · Overview"]
+    subgraph UI["⑤ COMMAND CENTRE UI"]
+        TABS["7 Interactive Tabs<br/>Simulator · ASTRA Impact · Interventions · What-If<br/>Emergency · Post-Event · Overview"]
+    end
 
     MAPS["Map APIs · Mappls<br/>route_eta · distances · 179 hospitals"]
     GEM["Gemini 2.5 Flash<br/>field note → structured event"]
