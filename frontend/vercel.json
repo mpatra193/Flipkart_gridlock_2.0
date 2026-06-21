@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "http://13.233.179.135/api/:path*"
+      "destination": "https://aloof-irk-moneybags.ngrok-free.dev/api/:path*"
     },
     {
       "source": "/(.*)",
