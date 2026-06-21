@@ -94,41 +94,73 @@ On top of the prediction core, the command centre adds four operational views: *
 
 ## 3. System Architecture
 
+ASTRA is a five-layer pipeline. One officer input flows **top to bottom** through Data → Intelligence → Spatial/Decision → Resourcing → UI in a single ~15 ms pass, and two side loops feed it: **Mappls** for live road geometry and **Gemini** for turning resolved-event notes back into training data.
+
 ```mermaid
 flowchart TB
-    subgraph Client["Client Layer"]
-        UI[React 19 + TypeScript Dashboard]
-        MAP[Mappls Vector Map SDK]
+    OFFICER["Officer Event Input<br/>cause · junction · time · closure"]
+
+    subgraph DF["① DATA FOUNDATION & MEMORY"]
+        RAW["Raw Event Data<br/>8,173 incidents"]
+        FEAT["Feature Builder<br/>time · geo · duration → 21 features"]
+        MEM["Historical Memory<br/>risk tables + distance matrix"]
     end
 
-    subgraph Edge["AWS Edge"]
-        CF[CloudFront CDN + HTTPS]
-        S3[S3 — static React build]
+    subgraph IC["② INTELLIGENCE CORE"]
+        DUR["Duration Model<br/>LightGBM · p10/p50/p90 + long-event"]
+        ESI["ESI Scoring<br/>0–100 severity"]
+        SIM["Similar Events<br/>k-NN retrieval"]
     end
 
-    subgraph Compute["AWS Compute"]
-        ALB[Application Load Balancer]
-        SVC[FastAPI container<br/>ECS Fargate or EC2]
-        ML[LightGBM model — in-memory]
-        GRAPH[NetworkX spillover graph — in-memory]
-        TABLES[Risk tables — parquet to Pandas, in-memory]
+    subgraph SDE["③ SPATIAL & DECISION ENGINES"]
+        IMP["Impact Radius<br/>congestion spread (km)"]
+        SPILL["Spillover Graph<br/>NetworkX cascade"]
+        DIV["Diversion Engine<br/>corridors + routes"]
     end
 
-    subgraph External["External APIs"]
-        MMI[Mappls route_eta<br/>live route polylines]
-    end
+    RES["④ Resource Planner<br/>police · barricades · patrol · sites (MILP)"]
 
-    UI --> CF
-    CF --> S3
-    CF -->|/api/*| ALB
-    ALB --> SVC
-    SVC --> ML
-    SVC --> GRAPH
-    SVC --> TABLES
-    SVC -.->|few calls per simulation| MMI
+    TABS["⑤ COMMAND CENTRE UI — 7 tabs<br/>Simulator · ASTRA Impact · Interventions · What-If<br/>Emergency · Post-Event · Overview"]
+
+    MAPS["Map APIs · Mappls<br/>route_eta · distances · 179 hospitals"]
+    GEM["Gemini 2.5 Flash<br/>field note → structured event"]
+
+    OFFICER --> FEAT
+    RAW --> FEAT --> MEM
+    FEAT --> DUR
+    MEM --> DUR & ESI & SIM
+    DUR --> ESI
+    ESI --> IMP & SPILL
+    SPILL --> DIV
+    MEM -.-> DIV
+    MAPS -.->|live routes| DIV
+    IMP --> RES
+    SPILL --> RES
+    DIV --> TABS
+    RES --> TABS
+    SIM --> TABS
+    ESI --> TABS
+    MAPS -.->|live routes| TABS
+    TABS -."post-event note".-> GEM
+    GEM -."structured row".-> RAW
+    TABS == "↻ learning loop · resolved events re-enter the data store" ==> RAW
 ```
 
-**Why no database.** The full historical dataset is ~8,000 rows / 45 columns — well under 10 MB. It is loaded once into Pandas DataFrames at process start and held in memory for the lifetime of the backend. The backend is **stateless** apart from one append-only file (`data/feedback.jsonl`, the learning loop). Adding Postgres/Mongo here would add latency, infra cost, and deployment complexity with near-zero benefit at this scale — see [Section 10](#10-data-storage) for what production scale would look like.
+### 3.1 Reading the diagram — what each layer does and how they talk
+
+**① Data Foundation & Memory.** The **Raw Event Data** (8,173 Bengaluru incidents) is cleaned and passed to the **Feature Builder**, which turns each event into 21 numeric features (time, geography, duration, cyclic encodings — Section 5.2). The same history is aggregated once into **Historical Memory**: per-junction / per-zone / per-corridor risk tables (Bayesian-shrunk) and a junction distance matrix. This layer is built offline by `scripts/build_all.py` and held entirely in memory.
+
+**② Intelligence Core.** The featurised event hits the **Duration Model** (the one ML model — LightGBM, predicting p10/p50/p90 + a long-event probability). Its planning (p90) duration feeds **ESI Scoring**, a transparent 0–100 severity from five weighted components. In parallel, **Similar Events** does a weighted k-NN lookup over Historical Memory to surface the most comparable past incidents. ESI is the spine — everything downstream branches off it.
+
+**③ Spatial & Decision Engines.** ESI + duration drive the **Impact Radius** (how far the jam reaches, in km) and the **Spillover Graph** (a NetworkX cascade over the 294-junction road network that names *which* junctions congest and how badly). The **Diversion Engine** then scores alternative corridors, avoiding the junctions the spillover graph just flagged, and pulls **live road routes from Mappls** (`route_eta`).
+
+**④ Resource Planner.** Takes the impact radius (perimeter) and the spillover-ranked junctions (point-duty) and solves a small **MILP** for the officer / barricade / patrol-vehicle counts and the per-junction deployment plan.
+
+**⑤ Command Centre UI.** Seven React tabs consume the single `Prediction` object — severity, why-panel, resources, diversions, the spillover timeline, similar events, the with-vs-without replay, the what-if projection, emergency dispatch, and the post-event report (Section 8).
+
+**The two side loops.** Map APIs (Mappls) inject real road geometry into the Diversion and Emergency views. The **learning loop** closes the system: when an officer logs a resolved event in **Post-Event**, **Gemini** structures their free-text note into a dataset-schema row, it is appended to the Raw Event Data, and `build_all.py` retrains the whole pipeline in the background — so ASTRA gets sharper with every incident it handles.
+
+**Why no database.** The full dataset is ~8,000 rows / 45 columns — under 10 MB — loaded once into Pandas at startup and resident for the process lifetime, so a live `/api/predict` does zero I/O and the whole pipeline runs in ~15 ms. The backend is **stateless** apart from one append-only `data/feedback.jsonl`. Postgres/Mongo would add latency and ops cost with near-zero benefit at this scale (Section 10 covers production scale-out). The deployment topology (S3/CloudFront + EC2/Fargate) is in [Section 14](#14-aws-deployment-plan).
 
 ---
 
@@ -201,7 +233,24 @@ Every engine below is **deterministic and inspectable** — same inputs always p
 | **Diversion Engine** | 3-layer corridor scoring (load 0.4, reliability 0.3, capacity 0.3) + spillover avoid-list | ranked diversion corridors with confidence % |
 | **Resource Planner** | `point_duty + perimeter + site` officers (capped 50); `barricades = site + ⌈radius×4⌉`; `patrol = ⌈area/8⌉` | officer/barricade/patrol counts, per-junction plan |
 
-**Why rules and not ML for these six:** none has a real measured label in the dataset (nobody recorded "how far did the jam spread" or "did the diversion succeed"). A model trained against a self-assigned label is not more trustworthy than a documented formula — just less explainable. Every multiplier (1.8 for closure, 1.6 for peak hour, etc.) is derived from an actual ratio observed in the data, not picked arbitrarily.
+**Why rules and not ML for these six:** none has a real measured label in the dataset (nobody recorded "how far did the jam spread" or "did the diversion succeed"). A model trained against a self-assigned label is not more trustworthy than a documented formula — just less explainable. So instead of asserting coefficients, **every number is either derived from the data or sensitivity-tested** — see 6.1.
+
+### 6.1 Derivation & Validation — every number justified
+
+We refuse to ship magic numbers. `scripts/06_validate.py` regenerates the full audit ([`docs/VALIDATION.md`](docs/VALIDATION.md)); the headline results:
+
+**Coefficients are derived from the data** (median-duration ratios, n = 2,711):
+- Road-closure events run **1.46×** longer (1.22 h vs 0.84 h) — the real ratio behind the "closure" weight.
+- Cause is the dominant driver: pot_holes **28.6×**, water_logging **15.8×**, construction 8.2× the global median; vehicle_breakdown 0.8×. The ESI `CAUSE_SCORE` is **computed from this**, not hand-picked.
+- Honest catch the audit surfaced: **peak-hour barely moves *duration* (1.03×)** — so we don't claim it does; the duration model learns the rest itself.
+
+**The spread model is validated against held-out co-occurrence** (almost no team validates their spread): the spillover graph's top-3 predicted junctions co-occur with the source **1.4–1.6× above chance**, the signal **strengthens at a tighter 3 h window**, and it **survives a non-circular corridor-only test** (the co-occurrence Rule-C edges excluded so the test can't cheat).
+
+**κ is sensitivity-tested, not arbitrary:** varying the decay constant ±50 % (2.0 → 1.0 / 3.0) keeps the top-10 affected-junction ranking at **Jaccard 0.91–0.99** with the **top junction unchanged 100 %** of the time — the rankings don't flip.
+
+**Duration is reported honestly, by band, against a baseline.** On the short/medium majority the point model **does not beat a naive "predict the median"** — and we say so. Where it genuinely wins: **long-event (> 6 h) detection ROC-AUC 0.87** and a calibrated **p10–p90 interval at 79 % coverage**. That is precisely why the product **plans on the P90, never the P50** — ESI, impact radius and resourcing all use the worst-case band, and the UI surfaces the interval + long-event probability instead of a false-precision point estimate.
+
+> Impact-radius multipliers (`M_closure`, `M_peak`, `M_cause`) are the one place with **no ground truth** — the dataset's `affected_distance_km` is 0 for 92 % of rows (median 14 m), so these remain documented, sensitivity-tested assumptions rather than fake-derived numbers. We'd rather be honest about that than pad it.
 
 ---
 
@@ -239,7 +288,7 @@ A live `POST /api/predict` touches none of these I/O paths — everything is res
 | HTTP | Axios | REST calls to `/api/*` |
 | State | React `useState`/`useMemo` | Tab + simulation state in `App.tsx` (no external store) |
 
-The dashboard is a single-page command centre with **six tabs**:
+The dashboard is a single-page command centre with **seven tabs**:
 
 1. **Simulator** — the core screen. Configure an event (cause, junction, time, day, closure, priority) and run the six-engine pipeline. The left panel is a stacking **Event Simulator**: each run is committed as a card, and **"+ Add another event"** lets you layer simultaneous incidents — affected junctions are unioned, ESI escalates, resources sum, and every epicentre is drawn on the map. Right panel: severity gauge, why-panel, resource plan, diversions, spillover timeline, similar events, feedback.
 
@@ -251,7 +300,9 @@ The dashboard is a single-page command centre with **six tabs**:
 
 5. **Emergency** — priority dispatch (see [Section 9](#9-emergency-hospital-network)): for **each incident** (so stacked multi-event simulations get a dispatch each), it picks the **nearest of 179 Bengaluru hospitals**, draws a **priority green corridor** from that hospital to the incident, places **officer markers at the signals held green** along the route, and shows the **dispatched officers/barricades on the hospital placemarker** (the same SVG icons as the simulator's resource panel — no emojis). Aggregate metrics: incidents, total distance, worst priority ETA, total time saved, officers·signals.
 
-6. **Overview** — fleet-wide KPIs, risk distribution, and the top risk junctions across the city.
+6. **Post-Event** — a spacious report screen, its own tab for room and visibility: log the actual duration, officers used, whether the diversion worked, and **free-text field notes** in a proper textarea. On submit, Gemini extracts delay-factor tags + a one-line summary, **structures the note into a dataset row**, and the outcome calibrates future predictions — the closing half of the learning loop, with the prediction shown alongside for reference.
+
+7. **Overview** — fleet-wide KPIs, risk distribution, and the top risk junctions across the city.
 
 ---
 
@@ -524,19 +575,15 @@ aws ssm put-parameter --name /astra/MAPMYINDIA_CLIENT_SECRET --type SecureString
 
 ## 15. CI/CD
 
-A two-lane GitHub Actions pipeline (suggested `.github/workflows`):
+Two GitHub Actions workflows ship in [`.github/workflows`](.github/workflows):
 
-**Backend lane** — on push to `main` touching `astra/**`, `scripts/**`, `requirements.txt`, `Dockerfile`:
-1. `pip install -r requirements.txt && python -m pytest -q`
-2. `docker build` → push to ECR (tag = git SHA)
-3. `aws ecs update-service --force-new-deployment` (rolling deploy, ALB drains old tasks)
+**`ci.yml` — build + test (runs on every push & PR).** Two parallel jobs:
+- **Backend:** `pip install -r requirements.txt` → `python scripts/build_all.py` (rebuilds the parquet + retrains the model from the committed raw CSV) → `pytest -q`. The engine tests assert **behaviour, not memorized constants** (e.g. "closure increases the radius", perimeter geometry, ranking order, the 10 km cap), so tuning a coefficient never breaks the suite — only a real regression does.
+- **Frontend:** `npm ci` → `npm run typecheck` (`tsc --noEmit`) → `npm run build`. Typecheck is explicit because `vite build` strips types without checking them.
 
-**Frontend lane** — on push touching `frontend/**`:
-1. `npm ci && npx tsc --noEmit && npm run build`
-2. `aws s3 sync dist/ s3://astra-frontend-<acct>/ --delete`
-3. `aws cloudfront create-invalidation --paths "/*"`
+**`deploy.yml` — deploy to EC2 (on push to `main`, also manual).** It `rsync`s the freshly-checked-out tree to the box (so **EC2 needs no GitHub credentials at all**), then runs `deploy.sh` on the server (`npm run build` + `systemctl restart astra-backend`, nginx serving `frontend/dist` and proxying `/api` → `:8001`). It **skips cleanly** if the EC2 secrets aren't set, and records a GitHub Deployment status on success/failure.
 
-Gate deploys on `pytest` (backend) and `tsc --noEmit` (frontend) so a red build never ships.
+> **Why behaviour-based tests matter here:** because so many coefficients are data-derived and re-tuned (Section 6.1), exact-value assertions would turn every honest improvement into a red build. Asserting *behaviour* keeps the gate meaningful without making it brittle.
 
 ---
 
