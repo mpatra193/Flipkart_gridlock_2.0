@@ -1,7 +1,13 @@
 import axios from "axios";
 import type { EventInput, FeedbackInput, Junction, Overview, Prediction } from "./types";
 
-const api = axios.create({ baseURL: "/api", timeout: 20000 });
+const api = axios.create({ 
+  baseURL: "/api", 
+  timeout: 20000,
+  headers: {
+    "ngrok-skip-browser-warning": "69420"
+  }
+});
 
 export async function predict(input: EventInput): Promise<Prediction> {
   const { data } = await api.post<Prediction>("/predict", input);
