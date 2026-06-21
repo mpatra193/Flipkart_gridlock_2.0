@@ -14,7 +14,6 @@ Live demo: http://13.233.179.135/
 ![Maps](https://img.shields.io/badge/maps-Mappls%20Vector%20SDK-4285F4)
 ![Cloud](https://img.shields.io/badge/cloud-AWS-orange)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
-[![Deploy to EC2](https://github.com/mpatra193/Flipkart_gridlock_2.0/actions/workflows/deploy.yml/badge.svg)](https://github.com/mpatra193/Flipkart_gridlock_2.0/actions/workflows/deploy.yml)
 
 📄 Full formulas, data audits, and worked examples for every engine live in [`DESIGN_SPEC.md`](DESIGN_SPEC.md) — this README is the judge-facing summary. Deployment runbook in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
