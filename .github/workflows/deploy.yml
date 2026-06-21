@@ -22,18 +22,36 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Skip (do not fail) if the deploy secrets aren't configured — this lets
-          # pushes succeed before the EC2 host/keys are wired up.
+          # Skip if secrets are not configured yet
           if [ -z "${EC2_HOST}" ] || [ -z "${EC2_USER}" ] || [ -z "${EC2_SSH_KEY_B64}" ]; then
-            echo "::warning::EC2 deploy secrets not set (EC2_HOST / EC2_USER / EC2_SSH_KEY_B64) — skipping deploy."
+            echo "::warning::EC2 deploy secrets not set — skipping deploy."
             exit 0
           fi
 
+          # Write the private key
           echo "$EC2_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
+          # Trust the host
           mkdir -p ~/.ssh
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
-            "$EC2_USER@$EC2_HOST" "bash /home/ubuntu/deploy.sh"
+          SSH="ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+
+          # ── Push the fresh checkout to EC2 (no GitHub auth on EC2 needed) ──
+          echo "Syncing code to EC2..."
+          rsync -az --delete \
+            -e "$SSH" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='frontend/node_modules' \
+            --exclude='frontend/dist' \
+            --exclude='.env' \
+            --exclude='data/processed' \
+            --exclude='data/interim' \
+            --exclude='artifacts' \
+            ./ "$EC2_USER@$EC2_HOST:/home/ubuntu/Flipkart_gridlock_2.0/"
+
+          # ── Build frontend + restart backend on EC2 ──
+          echo "Starting deployment on EC2..."
+          $SSH "$EC2_USER@$EC2_HOST" "bash /home/ubuntu/deploy.sh"
