@@ -1,7 +1,7 @@
 
 # 🚦 ASTRA — Autonomous Strategic Traffic Response Assistant
 
-Live demo: flipkart-gridlock-2-0-gray.vercel.app
+Live demo: https://flipkart-gridlock-2-0-gray.vercel.app/
 
 **An AI-powered decision-support & emergency-response system for Traffic Police**
 
