@@ -31,7 +31,9 @@ export default function PredictionPanel({ p }: { p: Prediction }) {
         }}
       >
         <div>
-          <div className="text-[10px] uppercase tracking-wider t-text-3 font-medium">Event Severity</div>
+          <div className="text-[10px] uppercase tracking-wider t-text-3 font-medium">
+            {p.event_count && p.event_count > 1 ? `Combined Severity · ${p.event_count} events` : "Event Severity"}
+          </div>
           <div className={`text-3xl font-extrabold risk-${p.risk_level} mt-0.5`}>{p.esi.toFixed(1)}</div>
         </div>
         <div
