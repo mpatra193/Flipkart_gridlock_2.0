@@ -5,7 +5,7 @@ Live demo: https://flipkart-gridlock-2-0-gray.vercel.app/
 
 **An AI-powered decision-support & emergency-response system for Traffic Police**
 
-*Built for Flipkart Grid 6.0 — Event-Driven Congestion (Planned & Unplanned)*
+*Built for Flipkart Gridlock 2.0 — Event-Driven Congestion (Planned & Unplanned)*
 
 ![Status](https://img.shields.io/badge/status-implemented-brightgreen)
 ![ML](https://img.shields.io/badge/ML-LightGBM-green)
@@ -642,7 +642,7 @@ The full system is **implemented and runnable end-to-end**, built phase by phase
 
 ## 19. Team
 
-*Built for Flipkart Grid 6.0 — Event-Driven Congestion (Planned & Unplanned) track.*
+*Built for Flipkart Gridlock 2.0 — Event-Driven Congestion (Planned & Unplanned) track.*
 
 | Member | |
 |---|---|

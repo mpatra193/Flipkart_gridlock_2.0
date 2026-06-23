@@ -98,6 +98,15 @@ export default function EventForm({
     if (committed.length === 0) setExpanded(true);
   }, [committed.length]);
 
+  useEffect(() => {
+    if (committed.length > 0) {
+      setHour(committed[0].hour);
+      setWeekday(committed[0].weekday);
+    }
+  }, [committed]);
+
+  const timeLocked = committed.length > 0;
+
   const peak = [8, 9, 10, 17, 18, 19, 20].includes(hour);
   const selected = junctions.find((j) => j.junction === junction);
   const policeStation = selected?.police_station ?? null;
@@ -222,8 +231,9 @@ export default function EventForm({
               min={0}
               max={23}
               value={hour}
+              disabled={timeLocked}
               onChange={(e) => setHour(Number(e.target.value))}
-              className="w-full mt-1"
+              className={`w-full mt-1 ${timeLocked ? "opacity-80 cursor-not-allowed" : ""}`}
             />
             <div className="flex justify-between text-[9px] t-text-muted mt-1">
               <span>12 AM</span><span>12 PM</span><span>11 PM</span>
@@ -236,12 +246,13 @@ export default function EventForm({
               {DAYS.map((d, i) => (
                 <button
                   key={d}
-                  onClick={() => setWeekday(i)}
+                  onClick={() => !timeLocked && setWeekday(i)}
+                  disabled={timeLocked}
                   className={`py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${
                     weekday === i
                       ? "text-cyan-300 border border-cyan-500/30"
                       : "t-text-muted border border-transparent"
-                  }`}
+                  } ${timeLocked ? "opacity-80 cursor-not-allowed" : ""}`}
                   style={{
                     background: weekday === i ? "var(--accent-glow)" : "var(--bg-card-inner)",
                   }}
